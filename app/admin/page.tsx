@@ -14,6 +14,7 @@ import {
   getDocs
 } from "firebase/firestore"
 
+
 const PRECODES_PRODUTOS: { [key: string]: number } = {
   tapiocaMolhada: 8.00,
   tapiocaManteiga: 6.00,
@@ -122,6 +123,7 @@ export default function AdminPainel() {
   const [horarioAvulso, setHorarioAvulso] = useState("0:00")
   const [valorTotalAvulso, setValorTotalAvulso] = useState("0.00")
   const [criandoAvulso, setCriandoAvulso] = useState(false)
+  
 
   const [itensAvulsos, setItensAvulsos] = useState({
     tapiocaMolhada: 0,

@@ -235,7 +235,7 @@ export default function ClientePainel() {
           throw new Error("Retorno do PIX inválido ou vazio")
         }
 
-        await executarCopiaTexto(dadosPix.payload)
+        console.log(dadosPix.payload)
         setStatusPix("copiado")
         // Trava o fluxo aqui abrindo o modal. O envio pro banco só ocorre quando ele clicar em fechar.
         setMostrarAlertaPix(true)
@@ -326,7 +326,7 @@ export default function ClientePainel() {
 
  if (!lojaAberta) {
   return (
-    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
+    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">git add .git add .git add .git add .
         <div className="text-center mb-8 select-none">
           <h1 className="text-3xl font-mono tracking-widest italic font-black text-orange-500 uppercase">TAPICUZ</h1>
           <p className="text-xs font-bold text-amber-500/80 tracking-widest uppercase mt-0.5">DA SUL</p>
