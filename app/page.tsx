@@ -91,7 +91,7 @@ export default function ClientePainel() {
 
   const [statusPix, setStatusPix] = useState<"normal" | "carregando" | "copiado" | "erro">("normal")
   const [mostrarAlertaPix, setMostrarAlertaPix] = useState(false)
-  const [codigoPix, setCodigoPix] = useState("")
+  const [codigoPix, setCodigoPix] = useState("") // ✅ Solução definitiva
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   
   const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
@@ -222,9 +222,11 @@ export default function ClientePainel() {
           throw new Error("Retorno do PIX inválido ou vazio")
         }
 
+        // ✅ Solução definitiva: salva código, remove cópia automática
         setCodigoPix(dadosPix.payload)
         setStatusPix("copiado")
         setMostrarAlertaPix(true)
+        
       } catch (error) {
         console.error("Erro crítico no fluxo do PIX:", error)
         setStatusPix("erro")
@@ -408,25 +410,26 @@ export default function ClientePainel() {
     Copie o código abaixo e cole no seu aplicativo bancário:
   </p>
 
-  <div className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-4 rounded-2xl font-mono text-sm break-all shadow-inner select-all">
+  {/* ✅ Código visível na tela */}
+  <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 break-all text-xs text-white select-all">
     {codigoPix}
   </div>
 
+  {/* ✅ Botão de cópia manual */}
   <button
     type="button"
     onClick={async () => {
       const ok = await executarCopiaTexto(codigoPix)
       if (ok) {
-        setStatusPix("copiado")
         setMostrarMensagemCopiado(true)
         setTimeout(() => setMostrarMensagemCopiado(false), 2500)
       } else {
         alert("❌ Erro ao copiar. Selecione o texto acima e copie manualmente.")
       }
     }}
-    className="w-full py-3 bg-blue-500 hover:bg-blue-400 text-white font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg"
+    className="w-full py-4 bg-orange-500 text-white font-black rounded-xl text-base uppercase tracking-widest transition-all active:scale-95 shadow-lg"
   >
-    📋 COPIAR CÓDIGO PIX
+    📋 COPIAR PIX
   </button>
 
   <p className="bg-zinc-900 border border-zinc-800 text-amber-400 p-3 rounded-2xl font-black text-sm uppercase shadow-inner">
@@ -792,6 +795,7 @@ export default function ClientePainel() {
                 </div>
               </div>
 
+              {/* ✅ CORRIGIDO: bloco único, sem repetição */}
               {pagamento === "Dinheiro" && (
                 <div className="w-full mt-3 bg-zinc-900 border-2 border-amber-500/50 rounded-2xl p-4 space-y-2 text-center shadow-inner">
                   <div>
@@ -808,26 +812,9 @@ export default function ClientePainel() {
                   </div>
                 </div>
               )}
-
-               {pagamento === "Dinheiro" && (
-                <div className="w-full mt-3 bg-zinc-900 border-2 border-amber-500/50 rounded-2xl p-4 space-y-2 text-center shadow-inner">
-                  <div>
-                    <span className="text-zinc-400 text-[10px] font-black block tracking-widest">VAI PAGAR COM NOTA DE:</span>
-                    <span className="text-amber-400 font-mono font-black text-2xl">
-                      R$ {trocoParaNum > 0 ? trocoParaNum.toFixed(2) : valorTotalFinal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="border-t border-zinc-800/80 pt-2">
-                    <span className="text-zinc-400 text-[10px] font-black block tracking-widest">VALOR DO SEU TROCO:</span>
-                    <span className="text-emerald-400 font-mono font-black text-3xl block mt-0.5 animate-pulse">
-                      R$ {trocoCalculado.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-                
-              )}
             </div>
 
+           
             <div className="space-y-2 flex flex-col items-center uppercase">
               <span className="text-[11px] uppercase font-black text-zinc-500 block tracking-wider mb-2">
                 ITENS ESCOLHIDOS:
@@ -839,7 +826,7 @@ export default function ClientePainel() {
                 return (
                   <div 
                     key={chave}
-                     className="flex justify-between items-center text-zinc-100 text-sm py-1.5 w-full max-w-sm border-b border-zinc-900/40 last:border-0 px-1"
+                    className="flex justify-between items-center text-zinc-100 text-sm py-1.5 w-full max-w-sm border-b border-zinc-900/40 last:border-0 px-1"
                   >
                     <div className="flex items-center gap-2 text-left">
                       <span className="text-base select-none">{produto.icone}</span> 
@@ -872,7 +859,7 @@ export default function ClientePainel() {
           <button 
             type="button"
             disabled={enviandoPedido}
-            onClick={processarEnvioPedido} // ← Chama a nova lógica controlada
+            onClick={processarEnvioPedido}
             className={`w-full py-5 px-6 disabled:opacity-40 text-zinc-950 text-lg font-black uppercase tracking-widest rounded-2xl transition-all shadow-md active:scale-95
               ${statusPix === "carregando" ? "bg-zinc-700 animate-pulse text-white" : "bg-emerald-600 hover:bg-emerald-500"}
             `}
@@ -915,3 +902,4 @@ export default function ClientePainel() {
     </main>
   )
 }
+  
