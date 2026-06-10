@@ -95,7 +95,7 @@ export default function ClientePainel() {
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   
   const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
-  const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false) // Mensagem bonita
+  const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false)
 
   const [itens, setItens] = useState<{ [key: string]: number }>({
     tapiocaMolhada: 0,
@@ -194,7 +194,6 @@ export default function ClientePainel() {
     setEtapa("confirmacao")
   }
 
-  // ✅ FUNÇÃO DE CÓPIA 100% CORRIGIDA - SEM ALERTA DO CHROME
   async function executarCopiaTexto(texto: string) {
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -208,7 +207,6 @@ export default function ClientePainel() {
     }
   }
 
-  // ETAPA 1: Processa o clique do botão final
   async function processarEnvioPedido() {
     if (enviandoPedido) return
     setEnviandoPedido(true)
@@ -239,7 +237,6 @@ export default function ClientePainel() {
     }
   }
 
-  // ETAPA 2: Grava de fato no Firestore
   async function salvarPedidoNoBanco() {
     setEnviandoPedido(true)
     
@@ -375,7 +372,6 @@ export default function ClientePainel() {
   return (
     <main className="min-h-screen bg-zinc-900 text-zinc-200 pb-32 font-sans antialiased selection:bg-orange-500/20">
       
-      {/* ✅ MENSAGEM BONITA DE COPIADO - APARECE NO CENTRO DA TELA */}
       {mostrarMensagemCopiado && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-emerald-500 text-white px-8 py-6 rounded-2xl shadow-2xl transform scale-105 transition-all">
@@ -390,7 +386,6 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {/* ✅ MODAL DO PIX - SEM ALERTA DO CHROME */}
       {mostrarAlertaPix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-zinc-950 border-4 border-emerald-500 max-w-md w-full rounded-[32px] p-8 text-center shadow-2xl space-y-6">
@@ -413,19 +408,16 @@ export default function ClientePainel() {
     Copie o código abaixo e cole no seu aplicativo bancário:
   </p>
 
-  {/* CÓDIGO PIX VISÍVEL */}
   <div className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-4 rounded-2xl font-mono text-sm break-all shadow-inner select-all">
     {codigoPix}
   </div>
 
-  {/* ✅ BOTÃO DE COPIAR - SEM AVISO DO CHROME + MENSAGEM BONITA */}
   <button
     type="button"
     onClick={async () => {
       const ok = await executarCopiaTexto(codigoPix)
       if (ok) {
         setStatusPix("copiado")
-        // Mostra mensagem bonita por 2,5 segundos
         setMostrarMensagemCopiado(true)
         setTimeout(() => setMostrarMensagemCopiado(false), 2500)
       } else {
@@ -448,13 +440,12 @@ export default function ClientePainel() {
               onClick={salvarPedidoNoBanco}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
             >
-              {enviandoPedido ? "GRAVANDO PEDIDO..." : "CONCLUIR ✅"}
+              {enviandoPedido ? "GRAVANDO PEDIDO..." : "JÁ EFETUEI O PAGAMENTO ✅"}
             </button>
           </div>
         </div>
       )}
 
-      {/* CABEÇALHO */}
       <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/60 px-4 py-4 shadow-md">
         <div className="max-w-2xl mx-auto flex items-center justify-center relative">
           <div className="text-center select-none">
@@ -603,7 +594,7 @@ export default function ClientePainel() {
           <form onSubmit={irParaConferencia} className="space-y-3 text-[11px]" noValidate>
             <div className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-2xl space-y-3 shadow-md">
               <div id="campo-nome">
-                <label className="text-xs font-black text-orange-400 uppercase block mb-1">Seu Nome *</label>
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Seu Nome *</label>
                 <input 
                   type="text" 
                   placeholder="Ex: Maria Souza" 
@@ -615,7 +606,7 @@ export default function ClientePainel() {
 
               <div className="grid grid-cols-3 gap-2">
                 <div id="campo-endereco" className="col-span-2">
-                  <label className="text-xs font-black text-orange-400 uppercase block mb-1">Endereço de Entrega *</label>
+                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Endereço de Entrega *</label>
                   <input 
                     type="text" 
                     placeholder="Ex: Rua das Flores" 
@@ -625,7 +616,7 @@ export default function ClientePainel() {
                   />
                 </div>
                 <div id="campo-numero">
-                  <label className="text-xs font-black text-orange-400 uppercase block mb-1">Número *</label>
+                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Número *</label>
                   <input 
                     type="text"
                     inputMode="numeric"
@@ -639,7 +630,7 @@ export default function ClientePainel() {
               </div>
 
               <div>
-                <label className="text-xs font-black text-orange-400 uppercase block mb-1">Ponto de Referência (Opcional)</label>
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Ponto de Referência (Opcional)</label>
                 <input 
                   type="text" 
                   placeholder="Ex: Próximo ao mercado" 
@@ -696,7 +687,7 @@ export default function ClientePainel() {
 
             <div className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-2xl space-y-3 shadow-md">
               <div>
-                <label className="text-xs font-black text-orange-400 uppercase block mb-1">Forma de Pagamento</label>
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Forma de Pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button 
                     type="button" 
@@ -731,7 +722,7 @@ export default function ClientePainel() {
 
               {pagamento === "Dinheiro" && (
                 <div className="space-y-1 pt-0.5">
-                  <label className="text-xs font-black text-orange-400 uppercase block mb-1">Precisa de troco para quanto?</label>
+                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Precisa de troco para quanto?</label>
                   <input 
                     type="text"
                     inputMode="numeric"
@@ -816,6 +807,24 @@ export default function ClientePainel() {
                     </span>
                   </div>
                 </div>
+              )}
+
+               {pagamento === "Dinheiro" && (
+                <div className="w-full mt-3 bg-zinc-900 border-2 border-amber-500/50 rounded-2xl p-4 space-y-2 text-center shadow-inner">
+                  <div>
+                    <span className="text-zinc-400 text-[10px] font-black block tracking-widest">VAI PAGAR COM NOTA DE:</span>
+                    <span className="text-amber-400 font-mono font-black text-2xl">
+                      R$ {trocoParaNum > 0 ? trocoParaNum.toFixed(2) : valorTotalFinal.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="border-t border-zinc-800/80 pt-2">
+                    <span className="text-zinc-400 text-[10px] font-black block tracking-widest">VALOR DO SEU TROCO:</span>
+                    <span className="text-emerald-400 font-mono font-black text-3xl block mt-0.5 animate-pulse">
+                      R$ {trocoCalculado.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+                
               )}
             </div>
 
