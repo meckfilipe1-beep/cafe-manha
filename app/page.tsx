@@ -25,7 +25,7 @@ const VERSICULOS_BENCÃO = [
   "Mil poderão cair ao teu lado, e dez mil à tua direita, mas tu não serás atingido. (Salmo 91:7)",
   "Guarda-me como à pupila dos olhos, esconde-me à sombra das tuas asas. (Salmo 17:8)",
   "Porque para Deus nada é impossível. (Lucas 1:37)",
-  "Lancem sobre ele toda a sua ansiedade, because ele tem cuidado de vocês. (1 Pedro 5:7)",
+  "Lancem sobre ele toda a sua ansiedade, porque ele tem cuidado de vocês. (1 Pedro 5:7)",
   "Sejam fortes e corajosos. Não tenham medo (...) pois o Senhor, o seu Deus, vai com vocês. (Deuteronômio 31:6)",
   "Grande é a sua fidelidade; as suas misericórdias renovam-se cada manhã. (Lamentações 3:22-23)",
   "A paz de Deus, que excede todo o entendimento, guardará o coração de vocês. (Filipenses 4:7)",
@@ -55,16 +55,16 @@ const PRECOS_PRODUTOS: { [key: string]: number } = {
   cafe: 4.00
 }
 
-const DETALHES_PRODUTOS: { [key: string]: { nome: string; icone: string } } = {
-  tapiocaMolhada: { nome: "Tapioca Molhada", icone: "🥥" },
-  tapiocaManteiga: { nome: "Tapioca com Manteiga", icone: "🧈" },
-  tapiocaQueijo: { nome: "Tapioca com Queijo", icone: "🧀" },
-  tapiocaOvo: { nome: "Tapioca com Ovo", icone: "🥚" },                  
-  tapiocaQueijoOvo: { nome: "Tapioca com Queijo e Ovo", icone: "🧀🥚" },
-  cuscuzMilho: { nome: "Cuszuz de Milho", icone: "🌽" },
-  cuscuzArroz: { nome: "Cuscuz de Arroz", icone: "🍚" },
-  cuscuzMilhoArroz: { nome: "Cuscuz de Milho e Arroz", icone: "🍲" },
-  cafe: { nome: "Café Quentinho", icone: "☕" }
+const DETALHES_PRODUTOS: { [key: string]: { nome: string; icone: string; imagem: string } } = {
+  tapiocaMolhada: { nome: "Tapioca Molhada", icone: "🥥", imagem: "tapioca_molhada.png" },
+  tapiocaManteiga: { nome: "Tapioca com Manteiga", icone: "🧈", imagem: "tapioca_manteiga.png" },
+  tapiocaQueijo: { nome: "Tapioca com Queijo", icone: "🧀", imagem: "tapioca_queijo.png" },
+  tapiocaOvo: { nome: "Tapioca com Ovo", icone: "🥚", imagem: "tapioca_ovo.png" },                  
+  tapiocaQueijoOvo: { nome: "Tapioca com Queijo e Ovo", icone: "🧀🥚", imagem: "tapioca_queijo_ovo.png" },
+  cuscuzMilho: { nome: "Cuscuz de Milho", icone: "🌽", imagem: "cuscuz_milho.png" },
+  cuscuzArroz: { nome: "Cuscuz de Arroz", icone: "🍚", imagem: "cuscuz_arroz.png" },
+  cuscuzMilhoArroz: { nome: "Cuscuz de Milho e Arroz", icone: "🍲", imagem: "cuscuz_milho_arroz.png" },
+  cafe: { nome: "Café Quentinho", icone: "☕", imagem: "cafe_leite.png" }
 }
 
 const OPCOES_HORARIOS = [
@@ -86,14 +86,16 @@ export default function ClientePainel() {
   const [observacao, setObservacao] = useState("") 
   const [pagamento, setPagamento] = useState<"Pix" | "Dinheiro">("Pix")
   const [trocoPara, setTrocoPara] = useState("")
-  const [horario, setHorario] = useState("0:00")
+  const [horario, setHorario] = useState("")
   const [mostrarListaHorarios, setMostrarListaHorarios] = useState(false)
 
   const [statusPix, setStatusPix] = useState<"normal" | "carregando" | "copiado" | "erro">("normal")
   const [mostrarAlertaPix, setMostrarAlertaPix] = useState(false)
+  const [codigoPix, setCodigoPix] = useState("")
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   
   const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
+  const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false) // Mensagem bonita
 
   const [itens, setItens] = useState<{ [key: string]: number }>({
     tapiocaMolhada: 0,
@@ -148,20 +150,8 @@ export default function ClientePainel() {
 
   let descuentoCombo = 0
   if (qtdComidas > 0 && qtdCafes > 0) {
-    const totalCombosPossiveis = Math.min(qtdComidas, qtdCafes)
-    let cafesAplicados = 0
-
-    Object.entries(itens).forEach(([key, qtd]) => {
-      if (key !== "cafe" && qtd > 0) {
-        const comidasNoCombo = Math.min(qtd, totalCombosPossiveis - cafesAplicados)
-        if (comidasNoCombo > 0) {
-          const valorNormalPar = PRECOS_PRODUTOS[key] + PRECOS_PRODUTOS.cafe
-          const descuentoPorPar = valorNormalPar - 10.00
-          descuentoCombo += descuentoPorPar * comidasNoCombo
-          cafesAplicados += comidasNoCombo
-        }
-      }
-    })
+    const totalCombos = Math.min(qtdComidas, qtdCafes)
+    descuentoCombo = totalCombos * 2.00
   }
 
   const valorTotalFinal = Math.max(0, subtotal - descuentoCombo)
@@ -189,12 +179,12 @@ export default function ClientePainel() {
       document.getElementById("campo-endereco")?.scrollIntoView({ behavior: "smooth" })
       return
     }
-    if (!numeroCasa.trim()) {
-      setErroValidacao("Por favor, preencha o campo: Número da Casa.")
+    if (!numeroCasa.trim() || !/^\d+$/.test(numeroCasa)) {
+      setErroValidacao("Por favor, preencha um número válido da casa.")
       document.getElementById("campo-numero")?.scrollIntoView({ behavior: "smooth" })
       return
     }
-    if (horario === "0:00") {
+    if (!horario) {
       setErroValidacao("Por favor, escolha um Horário para a sua entrega.")
       setMostrarListaHorarios(true)
       document.getElementById("campo-horario")?.scrollIntoView({ behavior: "smooth" })
@@ -204,27 +194,26 @@ export default function ClientePainel() {
     setEtapa("confirmacao")
   }
 
+  // ✅ FUNÇÃO DE CÓPIA 100% CORRIGIDA - SEM ALERTA DO CHROME
   async function executarCopiaTexto(texto: string) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(texto)
-    } else {
-      const inputInvisivel = document.createElement("input")
-      inputInvisivel.value = texto
-      inputInvisivel.style.position = "absolute"
-      inputInvisivel.style.left = "-9999px"
-      document.body.appendChild(inputInvisivel)
-      inputInvisivel.select()
-      inputInvisivel.setSelectionRange(0, 99999)
-      document.execCommand("copy")
-      document.body.removeChild(inputInvisivel)
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(texto)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error("Erro ao copiar:", err)
+      return false
     }
   }
 
-  // ETAPA 1: Processa o clique do botão final (Gera o PIX ou vai direto para Dinheiro)
+  // ETAPA 1: Processa o clique do botão final
   async function processarEnvioPedido() {
     if (enviandoPedido) return
     setEnviandoPedido(true)
     setStatusPix("normal")
+    setCodigoPix("")
 
     if (pagamento === "Pix") {
       try {
@@ -235,24 +224,22 @@ export default function ClientePainel() {
           throw new Error("Retorno do PIX inválido ou vazio")
         }
 
-        console.log(dadosPix.payload)
+        setCodigoPix(dadosPix.payload)
         setStatusPix("copiado")
-        // Trava o fluxo aqui abrindo o modal. O envio pro banco só ocorre quando ele clicar em fechar.
         setMostrarAlertaPix(true)
-        setEnviandoPedido(false) 
       } catch (error) {
         console.error("Erro crítico no fluxo do PIX:", error)
         setStatusPix("erro")
-        alert("Não foi possível gerar o código PIX automaticamente. Certifique-se de que a chave da Sueli está configurada corretamente no arquivo lib/pix.")
+        alert("Não foi possível gerar o código PIX. Verifique a configuração da chave no sistema.")
+      } finally {
         setEnviandoPedido(false)
       }
     } else {
-      // Se for dinheiro, não precisa de modal, salva direto no banco de dados
       await salvarPedidoNoBanco()
     }
   }
 
-  // ETAPA 2: Grava de fato no Firestore (chamado direto em Dinheiro, ou após o OK do PIX)
+  // ETAPA 2: Grava de fato no Firestore
   async function salvarPedidoNoBanco() {
     setEnviandoPedido(true)
     
@@ -291,7 +278,7 @@ export default function ClientePainel() {
       alert("Houve um erro ao enviar o seu pedido. Por favor, tente novamente.")
     } finally {
       setEnviandoPedido(false)
-      setMostrarAlertaPix(false) // Garante o fechamento do modal
+      setMostrarAlertaPix(false)
     }
   }
 
@@ -309,10 +296,11 @@ export default function ClientePainel() {
     })
     setObservacao("") 
     setTrocoPara("")
-    setHorario("0:00")
+    setHorario("")
     setErroValidacao(null)
     setVersiculoEscolhido("")
     setStatusPix("normal")
+    setCodigoPix("")
     setEtapa("menu")
   }
 
@@ -326,7 +314,7 @@ export default function ClientePainel() {
 
  if (!lojaAberta) {
   return (
-    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">git add .git add .git add .git add .
+    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
         <div className="text-center mb-8 select-none">
           <h1 className="text-3xl font-mono tracking-widest italic font-black text-orange-500 uppercase">TAPICUZ</h1>
           <p className="text-xs font-bold text-amber-500/80 tracking-widest uppercase mt-0.5">DA SUL</p>
@@ -335,10 +323,10 @@ export default function ClientePainel() {
           <div className="text-4xl animate-pulse">🌙</div>
           <h2 className="text-lg font-black uppercase text-orange-500 tracking-wider">
             NO MOMENTO NÃO ESTAMOS ACEITANDO PEDIDOS!
-                      obrigada.
+            Obrigado pela compreensão.
           </h2>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            
+            Estamos ajustando nosso atendimento, volte mais tarde.
           </p>
         </div>
       </div>
@@ -361,7 +349,6 @@ export default function ClientePainel() {
             </p>
           </div>
 
-          {/* ESPAÇO DO VERSÍCULO - MÁXIMA NITIDEZ */}
           {versiculoEscolhido && (
             <div className="border-2 border-amber-500/30 py-5 my-2 space-y-3 bg-zinc-900 rounded-2xl p-5 shadow-inner">
               <span className="text-xs font-black text-amber-400 tracking-widest block uppercase">
@@ -388,41 +375,80 @@ export default function ClientePainel() {
   return (
     <main className="min-h-screen bg-zinc-900 text-zinc-200 pb-32 font-sans antialiased selection:bg-orange-500/20">
       
-      {/* CARD FLUTUANTE DO PIX - FICA FIXADO ATÉ O CLIENTE CLICAR NO BOTÃO */}
+      {/* ✅ MENSAGEM BONITA DE COPIADO - APARECE NO CENTRO DA TELA */}
+      {mostrarMensagemCopiado && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-emerald-500 text-white px-8 py-6 rounded-2xl shadow-2xl transform scale-105 transition-all">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">✅</span>
+              <div className="text-left">
+                <h3 className="font-black text-lg">CÓDIGO COPIADO!</h3>
+                <p className="text-sm text-emerald-100">Agora é só colar no seu app do banco 🚀</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ MODAL DO PIX - SEM ALERTA DO CHROME */}
       {mostrarAlertaPix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-zinc-950 border-4 border-emerald-500 max-w-md w-full rounded-[32px] p-8 text-center shadow-2xl space-y-6">
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 text-4xl flex items-center justify-center mx-auto">
-              📋
+              📲
             </div>
             
             <h3 className="text-2xl font-black text-emerald-400 uppercase tracking-wide">
-               PIX COPIAR E COLAR COPIADO!
+              PIX GERADO COM SUCESSO!
             </h3>
             
            <div className="space-y-4 text-zinc-100 text-xl font-bold leading-snug">
   <p className="text-lg text-zinc-400">
     Olá,
   </p>
-  {/* Nome gigante, em negrito pesado e na cor laranja */}
   <p className="text-4xl font-black text-orange-500 tracking-wide uppercase break-words px-2">
     {nome || "CLIENTE"}
   </p>
   <p className="text-white pt-2">
-    O código de pagamento foi gerado com sucesso.
+    Copie o código abaixo e cole no seu aplicativo bancário:
   </p>
-  <p className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-5 rounded-2xl font-black text-2xl tracking-wide uppercase shadow-inner">
-    NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO
+
+  {/* CÓDIGO PIX VISÍVEL */}
+  <div className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-4 rounded-2xl font-mono text-sm break-all shadow-inner select-all">
+    {codigoPix}
+  </div>
+
+  {/* ✅ BOTÃO DE COPIAR - SEM AVISO DO CHROME + MENSAGEM BONITA */}
+  <button
+    type="button"
+    onClick={async () => {
+      const ok = await executarCopiaTexto(codigoPix)
+      if (ok) {
+        setStatusPix("copiado")
+        // Mostra mensagem bonita por 2,5 segundos
+        setMostrarMensagemCopiado(true)
+        setTimeout(() => setMostrarMensagemCopiado(false), 2500)
+      } else {
+        alert("❌ Erro ao copiar. Selecione o texto acima e copie manualmente.")
+      }
+    }}
+    className="w-full py-3 bg-blue-500 hover:bg-blue-400 text-white font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg"
+  >
+    📋 COPIAR CÓDIGO PIX
+  </button>
+
+  <p className="bg-zinc-900 border border-zinc-800 text-amber-400 p-3 rounded-2xl font-black text-sm uppercase shadow-inner">
+    NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO!
   </p>
 </div>
 
             <button
               type="button"
               disabled={enviandoPedido}
-              onClick={salvarPedidoNoBanco} // ← Clicar aqui agora envia pro Firebase e conclui o fluxo
+              onClick={salvarPedidoNoBanco}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
             >
-              {enviandoPedido ? "GRAVANDO PEDIDO..." : "OK, ENTENDIDO!"}
+              {enviandoPedido ? "GRAVANDO PEDIDO..." : "CONCLUIR ✅"}
             </button>
           </div>
         </div>
@@ -485,17 +511,7 @@ export default function ClientePainel() {
 >
                   <div className="w-full flex justify-center mb-3">
                     <Image
-                      src={`/produtos/${
-                        chave === "tapiocaMolhada" ? "tapioca_molhada.png"
-                          : chave === "tapiocaManteiga" ? "tapioca_manteiga.png"
-                          : chave === "tapiocaQueijo" ? "tapioca_queijo.png"
-                          : chave === "tapiocaOvo" ? "tapioca_ovo.png"              
-                          : chave === "tapiocaQueijoOvo" ? "tapioca_queijo_ovo.png"  
-                          : chave === "cuscuzMilho" ? "cuscuz_milho.png"
-                          : chave === "cuscuzArroz" ? "cuscuz_arroz.png"
-                          : chave === "cuscuzMilhoArroz" ? "cuscuz_milho_arroz.png"
-                          : "cafe_leite.png"
-                      }`}
+                      src={`/produtos/${produto.imagem}`}
                       alt={produto.nome}
                       width={112}
                       height={112}
@@ -538,7 +554,6 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {/* TELA: OBSERVAÇÃO DO PEDIDO */}
       {etapa === "observacao" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
           <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
@@ -572,7 +587,6 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {/* TELA: FORMULÁRIO CHECKOUT */}
       {etapa === "checkout" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
           <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
@@ -618,7 +632,7 @@ export default function ClientePainel() {
                     pattern="[0-9]*"
                     placeholder="123" 
                     value={numeroCasa} 
-                    onChange={(e) => { setNumeroCasa(e.target.value); setErroValidacao(null); }} 
+                    onChange={(e) => { setNumeroCasa(e.target.value.replace(/\D/g, '')); setErroValidacao(null); }} 
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-3.5 text-sm font-black text-center text-zinc-100 outline-none transition-all" 
                   />
                 </div>
@@ -631,7 +645,7 @@ export default function ClientePainel() {
                   placeholder="Ex: Próximo ao mercado" 
                   value={referencia} 
                   onChange={(e) => setReferencia(e.target.value)} 
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-400 rounded-xl p-3.5 text-sm text-zinc-100 outline-none transition-all" 
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-3.5 text-sm text-zinc-100 outline-none transition-all" 
                 />
               </div>
 
@@ -644,13 +658,13 @@ export default function ClientePainel() {
                   type="button"
                   onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)}
                   className={`w-full bg-zinc-900 rounded-2xl py-4 px-4 flex items-center justify-center relative active:scale-95 transition-all border-4 ${
-                    horario === "0:00" 
+                    !horario
                       ? "border-orange-500 animate-pulse shadow-[0_0_15px_rgba(249,115,22,0.4)]" 
                       : "border-emerald-500"
                   }`}
                 >
-                  <span className={`${horario === "0:00" ? "text-orange-400" : "text-emerald-400"} font-black text-2xl tracking-wide`}>
-                    {horario === "0:00" ? "TOQUE AQUI PARA ESCOLHER A HORA" : horario}
+                  <span className={`${!horario ? "text-orange-400" : "text-emerald-400"} font-black text-2xl tracking-wide`}>
+                    {!horario ? "TOQUE AQUI PARA ESCOLHER A HORA" : horario}
                   </span>
                   <span className="text-orange-500 absolute right-4 text-xs font-bold">{mostrarListaHorarios ? "▲" : "▼"}</span>
                 </button>
@@ -724,8 +738,8 @@ export default function ClientePainel() {
                     pattern="[0-9]*"
                     placeholder="R$: 0.00"
                     value={trocoPara} 
-                    onChange={(e) => setTrocoPara(e.target.value)} 
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-400 rounded-xl p-3.5 text-sm text-center text-zinc-100 font-bold outline-none transition-all" 
+                    onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ''))} 
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-3.5 text-sm text-center text-zinc-100 font-bold outline-none transition-all" 
                   />
                   {trocoCalculado > 0 && (
                     <p className="text-xs text-center text-emerald-400 font-bold pt-0.5">Seu troco será de: R$ {trocoCalculado.toFixed(2)}</p>
@@ -744,7 +758,6 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {/* TELA DE CONFIRMAÇÃO */}
       {etapa === "confirmacao" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-5 text-base uppercase">
           <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
@@ -816,8 +829,8 @@ export default function ClientePainel() {
                 const precoUnidade = PRECOS_PRODUTOS[chave]
                 return (
                   <div 
-                    key={chave} 
-                    className="flex justify-between items-center text-zinc-100 text-sm py-1.5 w-full max-w-sm border-b border-zinc-900/40 last:border-0 px-1"
+                    key={chave}
+                     className="flex justify-between items-center text-zinc-100 text-sm py-1.5 w-full max-w-sm border-b border-zinc-900/40 last:border-0 px-1"
                   >
                     <div className="flex items-center gap-2 text-left">
                       <span className="text-base select-none">{produto.icone}</span> 
