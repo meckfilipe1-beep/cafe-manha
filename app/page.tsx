@@ -9,7 +9,7 @@ import { gerarPixCopiaECola } from "@/lib/pix"
 // Tipagem das etapas do app
 type Etapa = "menu" | "observacao" | "checkout" | "confirmacao" | "sucesso"
 
-// LISTA DE VERSÍCULOS VARIADOS PARA O CLIENTE
+// LISTA DE VERSÍCULOS AMPLIADA
 const VERSICULOS_BENCÃO = [
   "O Senhor te abençoe e te guarde; o Senhor faça resplandecer o seu rosto sobre ti. (Números 6:24-25)",
   "O Senhor é o meu pastor; nada me faltará. (Salmo 23:1)",
@@ -17,7 +17,7 @@ const VERSICULOS_BENCÃO = [
   "Abençoado será você ao entrar e abençoado será ao sair. (Deuteronômio 28:6)",
   "Este é o dia que o Senhor fez; exultemos e alegremo-nos nele. (Salmo 118:24)",
   "Deem graças ao Senhor, porque ele é bom; o seu amor dura para sempre. (Salmo 107:1)",
-  "O meu Deus suprirá todas as necessidades de vocês, de acordo com as suas gloriosas richesas. (Filipenses 4:19)",
+  "O meu Deus suprirá todas as necessidades de vocês, de acordo com as suas gloriosas riquezas. (Filipenses 4:19)",
   "Aquietai-vos e sabei que eu sou Deus. (Salmo 46:10)",
   "Se Deus é por nós, quem será contra nós? (Romanos 8:31)",
   "Tudo posso naquele que me fortalece. (Filipenses 4:13)",
@@ -25,15 +25,24 @@ const VERSICULOS_BENCÃO = [
   "Mil poderão cair ao teu lado, e dez mil à tua direita, mas tu não serás atingido. (Salmo 91:7)",
   "Guarda-me como à pupila dos olhos, esconde-me à sombra das tuas asas. (Salmo 17:8)",
   "Porque para Deus nada é impossível. (Lucas 1:37)",
-  "Lancem sobre ele toda a sua ansiedade, porque ele tem cuidado de vocês. (1 Pedro 5:7)",
+  "Lancem sobre ele toda a sua ansiedade, because ele tem cuidado de vocês. (1 Pedro 5:7)",
   "Sejam fortes e corajosos. Não tenham medo (...) pois o Senhor, o seu Deus, vai com vocês. (Deuteronômio 31:6)",
   "Grande é a sua fidelidade; as suas misericórdias renovam-se cada manhã. (Lamentações 3:22-23)",
   "A paz de Deus, que excede todo o entendimento, guardará o coração de vocês. (Filipenses 4:7)",
   "Fui moço e agora sou velho; mas nunca vi desamparado o justo, nem a sua descendência a mendigar o pão. (Salmo 37:25)",
-  "O Senhor guiará você continuamente e fartará a sua alma até em lugares áridos. (Isaías 58:11)"
+  "O Senhor guiará você continuamente e fartará a sua alma até em lugares áridos. (Isaías 58:11)",
+  "Não fui eu que lhe ordenei? Seja forte e corajoso! Não se apavore nem desanime, pois o Senhor, o seu Deus, estará com você por onde você andar. (Josué 1:9)",
+  "Entrega o teu caminho ao Senhor; confia nele, e ele o fará. (Salmo 37:5)",
+  "Mas os que esperam no Senhor renovarão as suas forças; subirão com asas como águias; correrão e não se cansarão; caminharão e não se fatigarão. (Isaías 40:31)",
+  "Confie no Senhor de todo o seu coração e não se apoie em seu próprio entendimento. (Provérbios 3:5)",
+  "O Senhor guardará a tua saída e a tua entrada, desde agora e para sempre. (Salmo 121:8)",
+  "Sabemos que Deus age em todas as coisas para o bem daqueles que o amam, dos que foram chamados de acordo com o seu propósito. (Romanos 8:28)",
+  "Aquele que habita no esconderijo do Altíssimo, à sombra do Onipotente descansará. (Salmo 91:1)",
+  "O Senhor é bom, uma fortaleza no dia da angústia, e conhece os que confiam nele. (Naum 1:7)",
+  "Buscai em primeiro lugar o Reino de Deus e a sua justiça, e todas essas coisas vos serão acrescentadas. (Mateus 6:33)",
+  "Provai e vede que o Senhor é bom; bem-aventurado o homem que nele se refugia. (Salmo 34:8)"
 ]
 
-// 1. AJUSTE DE PREÇOS (Se a Sueli mudar os valores, é só alterar aqui)
 const PRECOS_PRODUTOS: { [key: string]: number } = {
   tapiocaMolhada: 8.00,
   tapiocaManteiga: 6.00,
@@ -60,7 +69,8 @@ const DETALHES_PRODUTOS: { [key: string]: { nome: string; icone: string } } = {
 
 const OPCOES_HORARIOS = [
   "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00",
-  "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"
+  "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00",
+  "17:30", "18:00"
 ]
 
 export default function ClientePainel() {
@@ -194,10 +204,58 @@ export default function ClientePainel() {
     setEtapa("confirmacao")
   }
 
-  async function enviarPedidoFinal() {
+  async function executarCopiaTexto(texto: string) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(texto)
+    } else {
+      const inputInvisivel = document.createElement("input")
+      inputInvisivel.value = texto
+      inputInvisivel.style.position = "absolute"
+      inputInvisivel.style.left = "-9999px"
+      document.body.appendChild(inputInvisivel)
+      inputInvisivel.select()
+      inputInvisivel.setSelectionRange(0, 99999)
+      document.execCommand("copy")
+      document.body.removeChild(inputInvisivel)
+    }
+  }
+
+  // ETAPA 1: Processa o clique do botão final (Gera o PIX ou vai direto para Dinheiro)
+  async function processarEnvioPedido() {
     if (enviandoPedido) return
     setEnviandoPedido(true)
+    setStatusPix("normal")
 
+    if (pagamento === "Pix") {
+      try {
+        setStatusPix("carregando")
+        const dadosPix = await gerarPixCopiaECola(valorTotalFinal)
+        
+        if (!dadosPix || !dadosPix.payload) {
+          throw new Error("Retorno do PIX inválido ou vazio")
+        }
+
+        await executarCopiaTexto(dadosPix.payload)
+        setStatusPix("copiado")
+        // Trava o fluxo aqui abrindo o modal. O envio pro banco só ocorre quando ele clicar em fechar.
+        setMostrarAlertaPix(true)
+        setEnviandoPedido(false) 
+      } catch (error) {
+        console.error("Erro crítico no fluxo do PIX:", error)
+        setStatusPix("erro")
+        alert("Não foi possível gerar o código PIX automaticamente. Certifique-se de que a chave da Sueli está configurada corretamente no arquivo lib/pix.")
+        setEnviandoPedido(false)
+      }
+    } else {
+      // Se for dinheiro, não precisa de modal, salva direto no banco de dados
+      await salvarPedidoNoBanco()
+    }
+  }
+
+  // ETAPA 2: Grava de fato no Firestore (chamado direto em Dinheiro, ou após o OK do PIX)
+  async function salvarPedidoNoBanco() {
+    setEnviandoPedido(true)
+    
     if (typeof window !== "undefined") {
       localStorage.setItem("tapicuz_nome", nome.trim())
       localStorage.setItem("tapicuz_endereco", endereco.trim())
@@ -233,6 +291,7 @@ export default function ClientePainel() {
       alert("Houve um erro ao enviar o seu pedido. Por favor, tente novamente.")
     } finally {
       setEnviandoPedido(false)
+      setMostrarAlertaPix(false) // Garante o fechamento do modal
     }
   }
 
@@ -253,6 +312,7 @@ export default function ClientePainel() {
     setHorario("0:00")
     setErroValidacao(null)
     setVersiculoEscolhido("")
+    setStatusPix("normal")
     setEtapa("menu")
   }
 
@@ -264,20 +324,21 @@ export default function ClientePainel() {
     )
   }
 
-  if (!lojaAberta) {
-    return (
-      <div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center px-4 text-center">
+ if (!lojaAberta) {
+  return (
+    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
         <div className="text-center mb-8 select-none">
-          <h1 className="text-3xl font-black text-orange-500 tracking-widest uppercase">TAPICUZ</h1>
-          <p className="text-xs font-bold text-amber-500/80 tracking-widest uppercase mt-0.5">DA SUELI</p>
+          <h1 className="text-3xl font-mono tracking-widest italic font-black text-orange-500 uppercase">TAPICUZ</h1>
+          <p className="text-xs font-bold text-amber-500/80 tracking-widest uppercase mt-0.5">DA SUL</p>
         </div>
         <div className="max-w-md w-full bg-zinc-950 border border-zinc-800 p-8 rounded-3xl shadow-2xl space-y-4">
           <div className="text-4xl animate-pulse">🌙</div>
           <h2 className="text-lg font-black uppercase text-orange-500 tracking-wider">
-            Ficamos felizes com sua visita!
+            NO MOMENTO NÃO ESTAMOS ACEITANDO PEDIDOS!
+                      obrigada.
           </h2>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            No momento nosso painel de pedidos está descansando. Volte em breve para saborear o melhor café da manhã do Nordeste!
+            
           </p>
         </div>
       </div>
@@ -327,7 +388,7 @@ export default function ClientePainel() {
   return (
     <main className="min-h-screen bg-zinc-900 text-zinc-200 pb-32 font-sans antialiased selection:bg-orange-500/20">
       
-      {/* CARD FLUTUANTE DO PIX */}
+      {/* CARD FLUTUANTE DO PIX - FICA FIXADO ATÉ O CLIENTE CLICAR NO BOTÃO */}
       {mostrarAlertaPix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-zinc-950 border-4 border-emerald-500 max-w-md w-full rounded-[32px] p-8 text-center shadow-2xl space-y-6">
@@ -336,38 +397,43 @@ export default function ClientePainel() {
             </div>
             
             <h3 className="text-2xl font-black text-emerald-400 uppercase tracking-wide">
-              CÓDIGO PIX COPIADO!
+               PIX COPIAR E COLAR COPIADO!
             </h3>
             
-            <div className="space-y-4 text-zinc-100 text-xl font-bold leading-snug">
-              <p>
-                Olá, <span className="text-orange-400 font-black underline decoration-2">{nome || "Cliente"}</span>!
-              </p>
-              <p className="text-white">
-                O código de pagamento foi realizado com sucesso.
-              </p>
-              <p className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-5 rounded-2xl font-black text-2xl tracking-wide uppercase shadow-inner">
-                NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO
-              </p>
-            </div>
+           <div className="space-y-4 text-zinc-100 text-xl font-bold leading-snug">
+  <p className="text-lg text-zinc-400">
+    Olá,
+  </p>
+  {/* Nome gigante, em negrito pesado e na cor laranja */}
+  <p className="text-4xl font-black text-orange-500 tracking-wide uppercase break-words px-2">
+    {nome || "CLIENTE"}
+  </p>
+  <p className="text-white pt-2">
+    O código de pagamento foi gerado com sucesso.
+  </p>
+  <p className="bg-zinc-900 border border-zinc-800 text-emerald-400 p-5 rounded-2xl font-black text-2xl tracking-wide uppercase shadow-inner">
+    NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO
+  </p>
+</div>
 
             <button
               type="button"
-              onClick={() => setMostrarAlertaPix(false)}
-              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2"
+              disabled={enviandoPedido}
+              onClick={salvarPedidoNoBanco} // ← Clicar aqui agora envia pro Firebase e conclui o fluxo
+              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
             >
-              OK, ENTENDIDO!
+              {enviandoPedido ? "GRAVANDO PEDIDO..." : "OK, ENTENDIDO!"}
             </button>
           </div>
         </div>
       )}
 
-      {/* CABEÇALHO ATUALIZADO EXCLUSIVAMENTE COM "DA SUELI" */}
+      {/* CABEÇALHO */}
       <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/60 px-4 py-4 shadow-md">
         <div className="max-w-2xl mx-auto flex items-center justify-center relative">
           <div className="text-center select-none">
-            <h1 className="text-2xl font-black text-orange-500 tracking-widest uppercase">TAPICUZ</h1>
-            <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5">DA SUELI</p>
+            <h1 className="text-2xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
+            <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5"></p>
           </div>
           <div className="absolute right-0 px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -380,7 +446,7 @@ export default function ClientePainel() {
         <div className="max-w-2xl mx-auto w-full px-0 sm:px-4">
           <div className="w-full overflow-hidden rounded-b-3xl shadow-lg border-b border-zinc-800/50 block">
             <Image
-              src="/banner/banner-topo.png"
+              src="/banner/banner-topo-v2.png"
               alt="Tapicuz Café da Manhã"
               width={800}
               height={220}
@@ -409,10 +475,14 @@ export default function ClientePainel() {
               const ehPrimeiroItem = chave === "tapiocaMolhada"
 
               return (
-                <div 
-                  key={chave} 
-                  className={`border rounded-3xl p-6 flex flex-col items-center gap-5 transition-all bg-stone-100 ${quantidade > 0 ? "border-orange-500 border-2 shadow-xl ring-4 ring-orange-500/10" : "border-stone-200/90 shadow-sm"}`}
-                >
+               <div 
+  key={chave} 
+  className={`border rounded-3xl p-6 flex flex-col items-center gap-5 transition-all 
+    ${quantidade > 0 
+      ? "bg-amber-400 border-orange-600 border-4 shadow-[0_0_20px_rgba(249,115,22,0.3)] scale-[1.02]" 
+      : "bg-amber-100/95 border-amber-200 shadow-sm"
+    }`}
+>
                   <div className="w-full flex justify-center mb-3">
                     <Image
                       src={`/produtos/${
@@ -477,46 +547,23 @@ export default function ClientePainel() {
           </div>
 
           <div className="bg-zinc-950 border border-zinc-800/80 p-6 rounded-3xl space-y-5 shadow-md text-center">
-            <h2 className="text-xl font-black text-zinc-100 uppercase tracking-wide block w-full text-center">
-              Observações do Pedido
+            <h2 className="text-xl font-black text-white uppercase tracking-wider block w-full text-center py-2">
+              ALGUMA OBSERVAÇÃO NO PEDIDO ?
             </h2>
-
-            <div className="bg-zinc-900/60 border border-zinc-800/60 p-4 rounded-2xl text-center space-y-2">
-              <p className="text-sm font-bold text-orange-400 tracking-wide uppercase">
-                💡 Quer deixar seu prato do seu jeito?
-              </p>
-              <p className="text-xs text-zinc-300 leading-relaxed px-2">
-                Use o space abaixo para avisar a Sueli sobre suas preferências! <br />
-                <span className="text-zinc-500 block mt-1.5 font-medium normal-case">
-                  Exemplos: "Sem coco ralado", "Bem quentinho", "Pouca manteiga", "Café sem açúcar", "Leite morno".
-                </span>
-              </p>
-            </div>
 
             <textarea
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
               placeholder="Digite aqui como você deseja o seu pedido..."
-              className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-2xl p-4 text-sm text-center text-zinc-100 outline-none transition-all desert-none resize-none font-medium placeholder:text-zinc-600 focus:placeholder:opacity-0"
+              className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-2xl p-4 text-sm text-center text-zinc-100 outline-none transition-all resize-none font-medium placeholder:text-zinc-600 focus:placeholder:opacity-0"
               rows={4}
             />
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setObservacao(""); 
-                  setEtapa("checkout");
-                }}
-                className="w-1/3 py-4 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-black text-xs uppercase tracking-widest rounded-xl transition-all active:scale-95"
-              >
-                Pular
-              </button>
-
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={() => setEtapa("checkout")}
-                className="w-2/3 py-4 bg-orange-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95"
+                className="w-full py-4 bg-orange-500 text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95"
               >
                 Continuar →
               </button>
@@ -655,69 +702,16 @@ export default function ClientePainel() {
               </div>
 
               {pagamento === "Pix" && (
-                <div className="space-y-3 pt-2">
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center">
-                    <p className="text-orange-400 font-black text-xs uppercase tracking-wider">
-                      Total a pagar no PIX
-                    </p>
-                    <p className="text-3xl font-black text-emerald-400 mt-2 tracking-tight">
-                      R$ {valorTotalFinal.toFixed(2)}
-                    </p>
-                    
-                    <button
-                      type="button"
-                      disabled={statusPix === "carregando"}
-                      onClick={async (e) => {
-                        e.preventDefault(); 
-                        e.stopPropagation();
-                        
-                        try {
-                          setStatusPix("carregando");
-
-                          const dadosPix = await gerarPixCopiaECola(valorTotalFinal);
-                          if (!dadosPix || !dadosPix.payload) {
-                            throw new Error("Retorno do PIX inválido ou vazio");
-                          }
-
-                          if (navigator.clipboard && navigator.clipboard.writeText) {
-                            await navigator.clipboard.writeText(dadosPix.payload);
-                          } else {
-                            const inputInvisivel = document.createElement("input");
-                            inputInvisivel.value = dadosPix.payload;
-                            inputInvisivel.style.position = "absolute";
-                            inputInvisivel.style.left = "-9999px";
-                            document.body.appendChild(inputInvisivel);
-                            inputInvisivel.select();
-                            inputInvisivel.setSelectionRange(0, 99999);
-                            document.execCommand("copy");
-                            document.body.removeChild(inputInvisivel);
-                          }
-
-                          setStatusPix("copiado");
-                          setMostrarAlertaPix(true);
-                          
-                          setTimeout(() => setStatusPix("normal"), 4000);
-
-                        } catch (error) {
-                          console.error("Erro crítico no fluxo do PIX:", error);
-                          setStatusPix("erro");
-                          alert("Não foi possível gerar o código PIX automaticamente. Certifique-se de que a chave da Sueli está configurada corretamente no arquivo lib/pix.");
-                          setTimeout(() => setStatusPix("normal"), 5000);
-                        }
-                      }}
-                      className={`mt-4 w-full font-black py-4 rounded-xl active:scale-95 transition-all text-xs tracking-widest uppercase text-white shadow-md
-                        ${statusPix === "normal" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
-                        ${statusPix === "carregando" ? "bg-zinc-700 cursor-not-allowed animate-pulse" : ""}
-                        ${statusPix === "copiado" ? "bg-blue-600" : ""}
-                        ${statusPix === "erro" ? "bg-red-600" : ""}
-                      `}
-                    >
-                      {statusPix === "normal" && "📋 PIX COPIAR E COLAR"}
-                      {statusPix === "carregando" && "⌛ GERANDO PIX..."}
-                      {statusPix === "copiado" && "✅ COPIADO COM SUCESSO!"}
-                      {statusPix === "erro" && "❌ ERRO AO GERAR PIX"}
-                    </button>
-                  </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center mt-2">
+                  <p className="text-orange-400 font-black text-xs uppercase tracking-wider">
+                    Total a pagar no PIX
+                  </p>
+                  <p className="text-3xl font-black text-emerald-400 mt-1 tracking-tight">
+                    R$ {valorTotalFinal.toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-2 uppercase font-semibold">
+                    O código copia-e-cola será gerado ao confirmar o pedido.
+                  </p>
                 </div>
               )}
 
@@ -759,7 +753,6 @@ export default function ClientePainel() {
           </div>
 
           <div className="bg-zinc-950 border-2 border-orange-500/60 rounded-[32px] p-6 space-y-5 shadow-2xl text-center">
-            
             <div className="space-y-3 text-zinc-200 border-b-2 border-zinc-900 pb-4 text-sm leading-relaxed flex flex-col items-center uppercase">
               <p><strong className="text-zinc-500 block text-xs uppercase tracking-wider">CLIENTE:</strong> <span className="text-zinc-100 font-bold text-base">{nome.toUpperCase()}</span></p>
               
@@ -857,15 +850,20 @@ export default function ClientePainel() {
           <button 
             type="button"
             disabled={enviandoPedido}
-            onClick={enviarPedidoFinal}
-            className="w-full py-5 px-6 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-zinc-950 text-lg font-black uppercase tracking-widest rounded-2xl transition-all shadow-md active:scale-95"
+            onClick={processarEnvioPedido} // ← Chama a nova lógica controlada
+            className={`w-full py-5 px-6 disabled:opacity-40 text-zinc-950 text-lg font-black uppercase tracking-widest rounded-2xl transition-all shadow-md active:scale-95
+              ${statusPix === "carregando" ? "bg-zinc-700 animate-pulse text-white" : "bg-emerald-600 hover:bg-emerald-500"}
+            `}
           >
-            {enviandoPedido ? "ENVIANDO PARA COZINHA..." : "🚀 ENVIAR PEDIDO AGORA"}
+            {statusPix === "carregando" && "⌛ GERANDO SEU PIX..."}
+            {statusPix === "copiado" && "📋 MOSTRANDO PIX COPIADO..."}
+            {statusPix === "normal" && (enviandoPedido ? "ENVIANDO PARA COZINHA..." : "🚀 CONFIRMAR E ENVIAR")}
+            {statusPix === "erro" && "❌ TENTAR NOVAMENTE"}
           </button>
         </div>
       )}
 
-      {/* BARRA INFERIOR */}
+      {/* BARRA INFERIOR DE NAVEGAÇÃO COMPRAS */}
       {totalItensSelecionados > 0 && (etapa === "menu" || etapa === "checkout") && (
         <div className="fixed bottom-6 left-4 right-4 z-40 max-w-xl mx-auto">
           <div className="bg-zinc-950 border border-zinc-800 shadow-2xl rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-center">

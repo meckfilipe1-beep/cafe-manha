@@ -497,466 +497,455 @@ export default function AdminPainel() {
       )}
 
       {/* ================= MODAL EXPLICATIVO DE SUCESSO DE CÓPIA ================= */}
-{mostrarModalCopiado && (
-  <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-    <div className="bg-zinc-900 border-2 border-emerald-400 w-full max-w-xs rounded-3xl p-6 text-center space-y-4 shadow-2xl animate-fade-in">
-      <span className="text-4xl block animate-bounce">📋</span>
-      <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest">RESUMO COPIADO COM SUCESSO!</h3>
-      <p className="text-zinc-400 text-xs uppercase font-bold leading-relaxed">O texto do cliente foi armazenado com sucesso na memória do dispositivo. Pode abrir o WhatsApp e colar!</p>
-      <button 
-        type="button"
-        onClick={() => setMostrarModalCopiado(false)}
-        className="w-full py-2.5 bg-emerald-400 hover:bg-emerald-500 text-black font-black text-xs uppercase rounded-xl transition-all"
-      >
-        Confirmado 👌
-      </button>
-    </div>
-  </div>
-)}
-
-{/* ================= MODAL DE CONFIGURAÇÃO MÁXIMA DE FORÇAR RESET GERAL ================= */}
-{modalConfirmarZerarTudo && (
-  <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
-    <div className="bg-zinc-900 border-2 border-red-500 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-      <div className="space-y-1">
-        <span className="text-3xl">⚠️</span>
-        <h2 className="text-sm font-black text-red-500 tracking-wider uppercase">VOCÊ TEM CERTEZA ABSOLUTA?</h2>
-        <p className="text-zinc-400 text-xs uppercase font-bold">Isso irá apagar todos os pedidos ativos, pendentes e o histórico do turno atual imediatamente sem salvar nada!</p>
-      </div>
-      <div className="grid grid-cols-1 gap-2 pt-2">
-        <button 
-          type="button"
-          onClick={apagarSistemaGeralEZero} 
-          className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg"
-        >
-          💥 APAGAR E ZERAR TUDO AGORA
-        </button>
-        <button 
-          type="button"
-          onClick={() => setModalConfirmarZerarTudo(false)} 
-          className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* ================= MODAL DE DECISÃO: CONCLUIR PEDIDO EXISTENTE ================= */}
-{pedidoSelecionadoParaConcluir && (
-  <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-      <div className="space-y-1">
-        <span className="text-xl">💰</span>
-        <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">O PEDIDO DE {pedidoSelecionadoParaConcluir.nome} JÁ FOI PAGO?</h2>
-        <p className="text-zinc-400 text-xs">Selecione o status de pagamento para arquivar.</p>
-      </div>
-      <div className="grid grid-cols-1 gap-2 pt-2">
-        <button 
-          type="button"
-          onClick={() => processarDecisaoPedidoExistente(true)} 
-          className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-        >
-          🟢 Sim, foi pago! (Ir para Vendas)
-        </button>
-        <button 
-          type="button"
-          onClick={() => processarDecisaoPedidoExistente(false)} 
-          className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-        >
-          🔴 Não foi pago! (Ir para Pendências)
-        </button>
-        <button 
-          type="button"
-          onClick={() => setPedidoSelecionadoParaConcluir(null)} 
-          className="py-2.5 mt-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* ================= MODAL: FLUXO DE ROTEAMENTO TRIPLO DO AVULSO ================= */}
-{mostrarResumoFinalAvulso && (
-  <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-    <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-      <div className="space-y-1">
-        <span className="text-xl">⚡</span>
-        <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">ONDE DESEJA LANÇAR ESTE PEDIDO?</h2>
-        <p className="text-zinc-400 text-[11px]">Escolha a destinação correta para manter a organization.</p>
-      </div>
-      <div className="grid grid-cols-1 gap-2.5 pt-2">
-        <button 
-          type="button"
-          onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")} 
-          disabled={criandoAvulso} 
-          className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-        >
-          🟢 PEDIDO PAGO (IR DIRETO P/ SOMA)
-        </button>
-        <button 
-          type="button"
-          onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")} 
-          disabled={criandoAvulso} 
-          className="py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-        >
-          🟡 MANDAR P/ FILA DE ESPERA (PRODUÇÃO)
-        </button>
-        <button 
-          type="button"
-          onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")} 
-          disabled={criandoAvulso} 
-          className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-        >
-          🔴 VALOR NÃO PAGO (IR P/ PENDÊNCIAS)
-        </button>
-        <button 
-          type="button"
-          onClick={() => setMostrarResumoFinalAvulso(false)} 
-          className="py-2.5 mt-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
-        >
-          ← Voltar e Ajustar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* ================= MODAL DE FECHAMENTO CHAVE COFRE ================= */}
-{modalConfirmarTurno && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 text-center space-y-4 shadow-2xl text-xs">
-      <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center text-lg mx-auto font-bold">🗂️</div>
-      <div className="space-y-1">
-        <h3 className="text-sm font-black text-zinc-200 uppercase tracking-wide">RESUMO DO TURNO</h3>
-      </div>
-      <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-left space-y-2 uppercase">
-        <div className="flex justify-between text-zinc-400"><span>PIX LIQUIDADO:</span><span className="font-bold text-teal-400">R$ {totalPix.toFixed(2)}</span></div>
-        <div className="flex justify-between text-zinc-400"><span>DINHEIRO:</span><span className="font-bold text-amber-500">R$ {totalDinheiro.toFixed(2)}</span></div>
-        <div className="flex justify-between text-zinc-400"><span>DESPESAS:</span><span className="font-bold text-red-400">R$ {totalDespesasAcumuladas.toFixed(2)}</span></div>
-        <div className="flex justify-between text-white border-t border-zinc-900 pt-2 font-black mt-1">
-          <span>SALDO LÍQUIDO:</span>
-          <span className="text-emerald-400 text-sm">R$ {saldoLiquidoAtual.toFixed(2)}</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2 pt-2">
-        <button type="button" onClick={() => setModalConfirmarTurno(false)} className="py-3 bg-zinc-800 hover:bg-zinc-700 font-bold rounded-xl text-zinc-300 uppercase">VOLTAR</button>
-        <button type="button" onClick={executarFechamentoTurno} className="py-3 bg-gradient-to-r from-orange-600 to-amber-600 font-black rounded-xl text-white uppercase transition-all">CONFIRMAR & FECHAR</button>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* ================= MODAL DETALHES DO PEDIDO ================= */}
-{pedidoDetalhado && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl text-xs uppercase">
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
-        <h2 className="text-sm font-black tracking-wider text-orange-400">RESUMO COMPLETO DO PEDIDO</h2>
-        <button type="button" onClick={() => setPedidoDetalhado(null)} className="w-7 h-7 bg-zinc-800 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-400 text-sm font-bold">✕</button>
-      </div>
-      <div className="space-y-2.5 bg-zinc-950 p-4 rounded-2xl border border-zinc-800">
-        <div className="flex justify-between"><span className="text-zinc-500 font-bold">CLIENTE:</span><span className="font-black text-white text-sm">{pedidoDetalhado.nome}</span></div>
-        <div className="flex justify-between"><span className="text-zinc-500 font-bold">HORÁRIO:</span><span className="font-black text-amber-400">⏱ {pedidoDetalhado.horario}</span></div>
-        <div className="flex flex-col gap-0.5 border-t border-zinc-800/40 pt-1.5"><span className="text-zinc-500 font-bold">LOCAL DE ENTREGA:</span><span className="font-bold text-zinc-300">{pedidoDetalhado.endereco}</span></div>
-        {pedidoDetalhado.observacao && (
-          <div className="mt-1 bg-zinc-900 p-2.5 border border-zinc-800 rounded-xl">
-            <span className="text-orange-400 font-bold block text-[10px]">OBSERVAÇÃO:</span>
-            <span className="text-zinc-300 font-black">{pedidoDetalhado.observacao}</span>
+      {mostrarModalCopiado && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border-2 border-emerald-400 w-full max-w-xs rounded-3xl p-6 text-center space-y-4 shadow-2xl animate-fade-in">
+            <span className="text-4xl block animate-bounce">📋</span>
+            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest">RESUMO COPIADO COM SUCCESSO!</h3>
+            <p className="text-zinc-400 text-xs uppercase font-bold leading-relaxed">O texto do cliente foi armazenado com sucesso na memória do dispositivo. Pode abrir o WhatsApp e colar!</p>
+            <button 
+              onClick={() => setMostrarModalCopiado(false)}
+              className="w-full py-2.5 bg-emerald-400 hover:bg-emerald-500 text-black font-black text-xs uppercase rounded-xl transition-all"
+            >
+              Confirmado 👌
+            </button>
           </div>
-        )}
-        <div className="flex justify-between border-t border-zinc-800/50 pt-2">
-          <span className="text-zinc-500 font-bold">MÉTODO DE PAGAMENTO:</span>
-          <span className="font-black text-zinc-200">{pedidoDetalhado.pagamento.toUpperCase()}</span>
-        </div>
-      </div>
-      
-      <div className="space-y-1.5 bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/60">
-        <span className="text-[9px] font-black text-zinc-500 block mb-1 tracking-wider text-center">PRODUTOS SOLICITADOS</span>
-        {Object.entries(pedidoDetalhado.itens || {}).map(([key, qtd]) => qtd > 0 && (
-          <div key={key} className="flex justify-between text-zinc-300 border-b border-zinc-900 pb-1">
-            <span>{formatarNomeItem(key)}</span>
-            <span className="font-black text-orange-400">{qtd}X</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex justify-between items-center bg-zinc-950 p-4 rounded-2xl border border-emerald-500/10">
-        <span className="text-[10px] font-bold text-zinc-400">VALOR TOTAL DO PEDIDO</span>
-        <p className="text-xl font-black text-emerald-400">R$ {pedidoDetalhado.valorTotal.toFixed(2)}</p>
-      </div>
-      <div className="pt-2 flex gap-2">
-        <button type="button" onClick={() => setPedidoDetalhado(null)} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold">FECHAR RESUMO</button>
-        <button type="button" onClick={() => { if(confirm("Deseja deletar este registro permanentemente?")) deletarDoHistorico(pedidoDetalhado.id) }} className="px-4 py-3 bg-red-950/40 text-red-400 border border-red-900/50 rounded-xl font-bold">🗑️</button>
-      </div>
-    </div>
-  </div>
-)}
-
-<div className="max-w-6xl mx-auto space-y-8">
-  
-  {/* ================= TOPBAR ABAS ================= */}
-  <div className="flex flex-col gap-6 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl uppercase">
-    <div className="flex flex-row justify-between items-center w-full">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-500 tracking-tight">TAPICUZ ADMIN ☀️</h1>
-        <p className="text-[10px] sm:text-xs text-zinc-500 font-bold">PAINEL DE CONTROLE DE ENTRADAS</p>
-      </div>
-      <div className="flex items-center gap-3 bg-zinc-950/60 border border-zinc-800/80 py-2 px-4 rounded-2xl">
-        <span className={`text-[10px] font-black tracking-wider hidden sm:inline ${lojaAberta ? "text-emerald-400" : "text-zinc-500"}`}>
-          {lojaAberta ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
-        </span>
-        <button 
-          type="button"
-          onClick={alternarStatusLoja}
-          className={`w-12 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${lojaAberta ? "bg-emerald-500" : "bg-zinc-800"}`}
-        >
-          <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-all duration-300 ${lojaAberta ? "translate-x-6" : "translate-x-0"}`} />
-        </button>
-      </div>
-    </div>
-    
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 w-full">
-      <button type="button" onClick={() => setAbaAtiva("pedidos")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-        <span className="text-lg">📋</span>
-        <span>Pedidos ({pedidosAtivos.length})</span>
-      </button>
-      <button type="button" onClick={() => setAbaAtiva("avulso")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-        <span className="text-lg">➕</span>
-        <span>LANÇAR AVULSO</span>
-      </button>
-      <button type="button" onClick={() => setAbaAtiva("pendencias")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pendencias" ? "bg-red-900 text-white border-red-500 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-        <span className="text-lg">⏳</span>
-        <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
-      </button>
-      <button type="button" onClick={() => setAbaAtiva("historico")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-        <span className="text-lg">📜</span>
-        <span>VENDAS PAGAS ({pedidosPagos.length})</span>
-      </button>
-      <button type="button" onClick={() => setAbaAtiva("caixa")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "caixa" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-        <span className="text-lg">💰</span>
-        <span>CAIXA GERAL</span>
-      </button>
-      <button type="button" onClick={() => setModalConfirmarZerarTudo(true)} className="p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all bg-zinc-950 border-red-800 text-red-500 hover:bg-red-950/20">
-        <span className="text-lg">🚨</span>
-        <span>ZERAR SISTEMA</span>
-      </button>
-    </div>
-  </div>
-
-  {/* ================= ABA: PEDIDOS ATIVOS ================= */}
-  {abaAtiva === "pedidos" && (
-    <div className="space-y-6 animate-fade-in uppercase">
-      {pedidosAtivos.length > 0 && (
-        <div className="max-w-xl mx-auto bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl text-center">
-          <button 
-            type="button"
-            onClick={() => setMostrarDemandas(!mostrarDemandas)}
-            className="w-full text-sm font-black text-orange-400 tracking-wider flex items-center justify-center gap-2 py-1"
-          >
-            👩‍🍳 INSUMOS PARA PREPARO IMEDIATO {mostrarDemandas ? "▲" : "▼"}
-          </button>
-          {mostrarDemandas && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-4 border-t border-zinc-800 pt-4">
-              {Object.entries(demandasProducao)
-                .filter(([_, qtd]) => qtd > 0)
-                .sort((a, b) => b[1] - a[1])
-                .map(([item, qtd]) => (
-                  <div key={item} className="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-800/40 font-black">
-                    <span className="text-zinc-300 w-full text-center">{formatarNomeItem(item)}</span>
-                    <span className="text-lg font-black text-orange-400 bg-zinc-900/80 border border-zinc-800 px-3 py-0.5 rounded-lg">{qtd}</span>
-                  </div>
-                ))}
-            </div>
-          )}
         </div>
       )}
 
-      {carregando ? (
-        <div className="text-center py-12 text-zinc-500 text-xs animate-pulse">SINCRONIZANDO BANCO...</div>
-      ) : pedidosAtivos.length === 0 ? (
-        <div className="text-center py-12 bg-zinc-900/40 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold">NENHUM PEDIDO ATIVO NO MOMENTO.</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {pedidosAtivos.map((pedido) => {
-            const estaSendoConcluido = pedidoSelecionadoParaConcluir?.id === pedido.id
-            return (
-              <div 
-                key={pedido.id} 
-                className={`border text-zinc-100 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between transition-all duration-300 ${
-                  estaSendoConcluido 
-                    ? "bg-emerald-950 border-emerald-400 scale-[1.01] shadow-emerald-900/20" 
-                    : "bg-zinc-900 border-zinc-800"
-                }`}
+      {/* ================= MODAL DE CONFIGURAÇÃO MÁXIMA DE FORÇAR RESET GERAL ================= */}
+      {modalConfirmarZerarTudo && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border-2 border-red-500 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
+            <div className="space-y-1">
+              <span className="text-3xl">⚠️</span>
+              <h2 className="text-sm font-black text-red-500 tracking-wider uppercase">VOCÊ TEM CERTEZA ABSOLUTA?</h2>
+              <p className="text-zinc-400 text-xs uppercase font-bold">Isso irá apagar todos os pedidos ativos, pendentes e o histórico do turno atual imediatamente sem salvar nada!</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 pt-2">
+              <button 
+                onClick={apagarSistemaGeralEZero} 
+                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg"
               >
-                <div>
-                  <div className={`border rounded-2xl py-2 px-4 flex items-center justify-center ${estaSendoConcluido ? "bg-black/30 border-emerald-500/30" : "bg-black/50 border border-zinc-800"}`}>
-                    <span className={`text-lg font-black tracking-wider ${estaSendoConcluido ? "text-emerald-400 animate-pulse" : "text-orange-400"}`}>
-                      {estaSendoConcluido ? "✓ CONCLUINDO..." : `⏱️ ${pedido.horario}`}
-                    </span>
-                  </div>
-                  <div className={`border-b pb-2.5 text-center space-y-2 mt-2 uppercase ${estaSendoConcluido ? "border-emerald-800/40" : "border-zinc-800/60"}`}>
-                    <div>
-                      <span className={`text-[9px] font-bold block mb-0.5 ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>CLIENTE</span>
-                      <h3 className="font-black text-white text-base tracking-tight">{pedido.nome}</h3>
-                    </div>
-                    <div className="flex flex-col items-center justify-center gap-1">
-                      <span className={`text-[9px] font-bold block ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>LOGRADOURO</span>
-                      <span className={`text-xs font-black tracking-wide py-1.5 px-3 rounded-xl border inline-block text-center max-w-full truncate ${
-                        estaSendoConcluido 
-                          ? "text-emerald-300 bg-emerald-400/5 border-emerald-500/20" 
-                          : "text-yellow-400 bg-yellow-400/5 border-yellow-400/10"
-                      }`}>
-                        📍 {pedido.endereco}
-                      </span>
-                    </div>
-                    {pedido.observacao && (
-                      <div className={`border rounded-xl p-3 text-center ${estaSendoConcluido ? "bg-emerald-900/30 border-emerald-500/20" : "bg-orange-500/10 border border-orange-500/20"}`}>
-                        <p className={`text-[10px] font-black mb-1 ${estaSendoConcluido ? "text-orange-400" : "text-orange-400"}`}>REQUISITO</p>
-                        <p className="text-xs text-zinc-200 font-black">{pedido.observacao}</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className={`p-3 rounded-xl border text-xs text-center mt-3 ${estaSendoConcluido ? "bg-black/10 border-emerald-800/30" : "bg-black/20 border border-zinc-800/60"}`}>
-                    <span className={`text-[9px] font-bold block mb-1 uppercase ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-500"}`}>COMPOSIÇÃO</span>
-                    {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
-                      <div key={key} className="flex justify-center items-center text-zinc-100 font-black">
-                        <span><strong className={`${estaSendoConcluido ? "text-emerald-400" : "text-amber-300"} mr-1`}>{qtd}X</strong> {formatarNomeItem(key)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={`p-3 rounded-xl border flex justify-between items-center text-xs mt-3 uppercase ${estaSendoConcluido ? "bg-black/20 border-emerald-800/40" : "bg-black/40 border border-zinc-800"}`}>
-                    <div>
-                      <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>ESCOLHA</span>
-                      <span className="font-black text-zinc-200 text-[11px]">{pedido.pagamento}</span>
-                      {pedido.pagamento === "Dinheiro" && pedido.troco > 0 && (
-                        <span className="font-black text-red-400 block mt-0.5 text-xs">TROCO: R$ {pedido.troco.toFixed(2)}</span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>SUBTOTAL</span>
-                      <span className={`text-base font-black ${estaSendoConcluido ? "text-emerald-300" : "text-emerald-400"}`}>R$ {pedido.valorTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="pt-3">
-                  <button 
-                    type="button"
-                    onClick={() => setPedidoSelecionadoParaConcluir(pedido)} 
-                    className={`w-full py-3.5 rounded-xl font-black text-xs text-white tracking-widest uppercase shadow-md transition-all ${
-                      estaSendoConcluido 
-                        ? "bg-emerald-500 hover:bg-emerald-600 animate-pulse" 
-                        : "bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-95"
-                    }`}
-                  >
-                    {estaSendoConcluido ? "✓ DEFINIR DESTINO" : "➡️ Concluir"}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+                💥 APAGAR E ZERAR TUDO AGORA
+              </button>
+              <button 
+                onClick={() => setModalConfirmarZerarTudo(false)} 
+                className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
-  )}
 
-  {/* ================= ABA: PENDÊNCIAS ================= */}
-  {abaAtiva === "pendencias" && (
-    <div className="space-y-6 animate-fade-in uppercase">
-      <div className="text-center bg-zinc-900 border-2 border-red-900/30 rounded-3xl p-6 shadow-xl max-w-lg mx-auto">
-        <span className="text-2xl">⏳</span>
-        <h2 className="text-sm font-black text-red-400 tracking-widest mt-1">SALA DE AGUARDO DE TRANSFERÊNCIAS</h2>
-        <p className="text-zinc-400 text-[11px] mt-1 font-medium">PEDIDOS ENTREGUES MAS COM RECEBIMENTO NÃO CONFIRMADO NO BANCO.</p>
-      </div>
-      {pedidosPendentes.length === 0 ? (
-        <div className="text-center py-12 bg-zinc-900/30 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold tracking-wide">
-          NENHUMA PENDÊNCIA REGISTRADA NO MOMENTO.
+      {/* ================= MODAL DE DECISÃO: CONCLUIR PEDIDO EXISTENTE ================= */}
+      {pedidoSelecionadoParaConcluir && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
+            <div className="space-y-1">
+              <span className="text-xl">💰</span>
+              <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">O PEDIDO DE {pedidoSelecionadoParaConcluir.nome} JÁ FOI PAGO?</h2>
+              <p className="text-zinc-400 text-xs">Selecione o status de pagamento para arquivar.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 pt-2">
+              <button 
+                onClick={() => processarDecisaoPedidoExistente(true)} 
+                className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
+              >
+                🟢 Sim, foi pago! (Ir para Vendas)
+              </button>
+              <button 
+                onClick={() => processarDecisaoPedidoExistente(false)} 
+                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
+              >
+                🔴 Não foi pago! (Ir para Pendências)
+              </button>
+              <button 
+                onClick={() => setPedidoSelecionadoParaConcluir(null)} 
+                className="py-2.5 mt-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {pedidosPendentes.map((pedido) => (
-            <div key={pedido.id} className="border bg-zinc-900 border-red-950/40 text-zinc-100 rounded-3xl p-5 shadow-xl flex flex-col justify-between">
-              
-              <div className="bg-black/30 border border-zinc-800/60 rounded-2xl p-4 space-y-3.5 text-center">
-                <div className="border-t border-b border-zinc-800/60 pb-2">
-                  <span className="text-red-400 font-black text-xs tracking-widest block animate-pulse">⚠️ AGUARDANDO PAGAMENTO</span>
-                  <span className="font-mono text-[10px] font-black text-zinc-500 mt-0.5 block">HORÁRIO DE ENVIO: {pedido.horario}</span>
-                </div>
-                
-                <div>
-                  <span className="text-[11px] font-black text-zinc-400 tracking-widest block mb-0.5">⚠️ CLIENTE ⚠️</span>
-                  <h4 className="font-black text-white text-base tracking-wide">{pedido.nome}</h4>
-                  <span className="text-[11px] text-amber-400 block font-semibold mt-1">📍 ENTREGA: {pedido.endereco}</span>
-                </div>
-                
-                <div className="border-t border-b border-zinc-800/40 py-2.5 text-xs text-zinc-300 font-bold space-y-0.5">
-                  <span className="text-[9px] font-black text-zinc-500 block mb-1">PRODUTOS DO CLIENTE</span>
-                  {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
-                    <div key={key}>• {qtd}x {formatarNomeItem(key)}</div>
-                  ))}
-                </div>
-                
-                <div className="pt-1">
-                  <span className="text-zinc-500 font-black text-[9px] tracking-wider block mb-0.5">MÉTODO PROPOSTO: {pedido.pagamento.toUpperCase()}</span>
-                  <p className="text-[10px] font-bold text-zinc-400">VALOR DEVEDOR TOTAL:</p>
-                  <span className="font-black text-red-500 text-xl tracking-tight">R$ {pedido.valorTotal.toFixed(2)}</span>
-                </div>
-              </div>
+      )}
 
-              <div className="space-y-2 pt-4">
-                <button type="button" onClick={() => marcarComoPago(pedido.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-xs uppercase transition-all shadow-md">💰 Confirmar Pagamento</button>
-                <button type="button" onClick={() => enviarMensagemNotificacaoWhats(pedido.nome)} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-xl font-bold text-[11px] uppercase transition-all border border-zinc-700">📱 Avisar Cliente</button>
+      {/* ================= MODAL: FLUXO DE ROTEAMENTO TRIPLO DO AVULSO ================= */}
+      {mostrarResumoFinalAvulso && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
+            <div className="space-y-1">
+              <span className="text-xl">⚡</span>
+              <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">ONDE DESEJA LANÇAR ESTE PEDIDO?</h2>
+              <p className="text-zinc-400 text-[11px]">Escolha a destinação correta para manter a organização.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2.5 pt-2">
+              <button 
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")} 
+                disabled={criandoAvulso} 
+                className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
+              >
+                🟢 PEDIDO PAGO (IR DIRETO P/ SOMA)
+              </button>
+              <button 
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")} 
+                disabled={criandoAvulso} 
+                className="py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
+              >
+                🟡 MANDAR P/ FILA DE ESPERA (PRODUÇÃO)
+              </button>
+              <button 
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")} 
+                disabled={criandoAvulso} 
+                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
+              >
+                🔴 VALOR NÃO PAGO (IR P/ PENDÊNCIAS)
+              </button>
+              <button 
+                onClick={() => setMostrarResumoFinalAvulso(false)} 
+                className="py-2.5 mt-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
+              >
+                ← Voltar e Ajustar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL DE FECHAMENTO CHAVE COFRE ================= */}
+      {modalConfirmarTurno && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 text-center space-y-4 shadow-2xl text-xs">
+            <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center text-lg mx-auto font-bold">🗂️</div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-zinc-200 uppercase tracking-wide">RESUMO DO TURNO</h3>
+            </div>
+            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-left space-y-2 uppercase">
+              <div className="flex justify-between text-zinc-400"><span>PIX LIQUIDADO:</span><span className="font-bold text-teal-400">R$ {totalPix.toFixed(2)}</span></div>
+              <div className="flex justify-between text-zinc-400"><span>DINHEIRO:</span><span className="font-bold text-amber-500">R$ {totalDinheiro.toFixed(2)}</span></div>
+              <div className="flex justify-between text-zinc-400"><span>DESPESAS:</span><span className="font-bold text-red-400">R$ {totalDespesasAcumuladas.toFixed(2)}</span></div>
+              <div className="flex justify-between text-white border-t border-zinc-900 pt-2 font-black mt-1">
+                <span>SALDO LÍQUIDO:</span>
+                <span className="text-emerald-400 text-sm">R$ {saldoLiquidoAtual.toFixed(2)}</span>
               </div>
             </div>
-          ))}
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button type="button" onClick={() => setModalConfirmarTurno(false)} className="py-3 bg-zinc-800 hover:bg-zinc-700 font-bold rounded-xl text-zinc-300 uppercase">VOLTAR</button>
+              <button type="button" onClick={executarFechamentoTurno} className="py-3 bg-gradient-to-r from-orange-600 to-amber-600 font-black rounded-xl text-white uppercase transition-all">CONFIRMAR & FECHAR</button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
-  )}
 
-  {/* ================= ABA: HISTÓRICO DE PEDIDOS PAGOS ================= */}
-  {abaAtiva === "historico" && (
-    <div className="space-y-6 animate-fade-in uppercase">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl text-xs">
-        <h2 className="text-sm font-black text-emerald-400 tracking-wider border-b border-zinc-800 pb-2 text-center">HISTÓRICO DE PEDIDOS PAGOS</h2>
-        {pedidosPagos.length === 0 ? (
-          <div className="text-center py-6 text-zinc-500 font-bold">NENHUM FLUXO TOTALIZADO NESTE TURNO AINDA.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 font-bold">
-                  <th className="pb-2">NOME DO CLIENTE</th>
-                  <th className="pb-2">VALOR</th>
-                  <th className="pb-2 text-center">VER RESUMO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidosPagos.map((pedido) => (
-                  <tr key={pedido.id} className="border-b border-zinc-800/30 hover:bg-zinc-950/20">
-                    <td className="py-3 font-black text-zinc-200">{pedido.nome}</td>
-                    <td className="py-3 font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</td>
-                    <td className="py-3 text-center">
-                      <button 
-                        type="button"
-                        onClick={() => setPedidoDetalhado(pedido)} 
-                        className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-black px-4 py-1.5 rounded-xl text-[11px] border border-zinc-700/60 transition-all"
-                      >
-                        👁️ DETALHES
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ================= MODAL DETALHES DO PEDIDO ================= */}
+      {pedidoDetalhado && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl text-xs uppercase">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+              <h2 className="text-sm font-black tracking-wider text-orange-400">RESUMO COMPLETO DO PEDIDO</h2>
+              <button onClick={() => setPedidoDetalhado(null)} className="w-7 h-7 bg-zinc-800 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-400 text-sm font-bold">✕</button>
+            </div>
+            <div className="space-y-2.5 bg-zinc-950 p-4 rounded-2xl border border-zinc-800">
+              <div className="flex justify-between"><span className="text-zinc-500 font-bold">CLIENTE:</span><span className="font-black text-white text-sm">{pedidoDetalhado.nome}</span></div>
+              <div className="flex justify-between"><span className="text-zinc-500 font-bold">HORÁRIO:</span><span className="font-black text-amber-400">⏱ {pedidoDetalhado.horario}</span></div>
+              <div className="flex flex-col gap-0.5 border-t border-zinc-800/40 pt-1.5"><span className="text-zinc-500 font-bold">LOCAL DE ENTREGA:</span><span className="font-bold text-zinc-300">{pedidoDetalhado.endereco}</span></div>
+              {pedidoDetalhado.observacao && (
+                <div className="mt-1 bg-zinc-900 p-2.5 border border-zinc-800 rounded-xl">
+                  <span className="text-orange-400 font-bold block text-[10px]">OBSERVAÇÃO:</span>
+                  <span className="text-zinc-300 font-black">{pedidoDetalhado.observacao}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-zinc-800/50 pt-2">
+                <span className="text-zinc-500 font-bold">MÉTODO DE PAGAMENTO:</span>
+                <span className="font-black text-zinc-200">{pedidoDetalhado.pagamento.toUpperCase()}</span>
+              </div>
+            </div>
+            
+            <div className="space-y-1.5 bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/60">
+              <span className="text-[9px] font-black text-zinc-500 block mb-1 tracking-wider text-center">PRODUTOS SOLICITADOS</span>
+              {Object.entries(pedidoDetalhado.itens || {}).map(([key, qtd]) => qtd > 0 && (
+                <div key={key} className="flex justify-between text-zinc-300 border-b border-zinc-900 pb-1">
+                  <span>{formatarNomeItem(key)}</span>
+                  <span className="font-black text-orange-400">{qtd}X</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center bg-zinc-950 p-4 rounded-2xl border border-emerald-500/10">
+              <span className="text-[10px] font-bold text-zinc-400">VALOR TOTAL DO PEDIDO</span>
+              <p className="text-xl font-black text-emerald-400">R$ {pedidoDetalhado.valorTotal.toFixed(2)}</p>
+            </div>
+            <div className="pt-2 flex gap-2">
+              <button onClick={() => setPedidoDetalhado(null)} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold">FECHAR RESUMO</button>
+              <button onClick={() => { if(confirm("Deseja deletar este registro permanentemente?")) deletarDoHistorico(pedidoDetalhado.id) }} className="px-4 py-3 bg-red-950/40 text-red-400 border border-red-900/50 rounded-xl font-bold">🗑️</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-6xl mx-auto space-y-8">
+        
+        {/* ================= TOPBAR ABAS ================= */}
+        <div className="flex flex-col gap-6 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl uppercase">
+          <div className="flex flex-row justify-between items-center w-full">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-500 tracking-tight">TAPICUZ ADMIN ☀️</h1>
+              <p className="text-[10px] sm:text-xs text-zinc-500 font-bold">PAINEL DE CONTROLE DE ENTRADAS</p>
+            </div>
+            <div className="flex items-center gap-3 bg-zinc-950/60 border border-zinc-800/80 py-2 px-4 rounded-2xl">
+              <span className={`text-[10px] font-black tracking-wider hidden sm:inline ${lojaAberta ? "text-emerald-400" : "text-zinc-500"}`}>
+                {lojaAberta ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
+              </span>
+              <button 
+                type="button"
+                onClick={alternarStatusLoja}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${lojaAberta ? "bg-emerald-500" : "bg-zinc-800"}`}
+              >
+                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-all duration-300 ${lojaAberta ? "translate-x-6" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 w-full">
+            <button onClick={() => setAbaAtiva("pedidos")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
+              <span className="text-lg">📋</span>
+              <span>Pedidos ({pedidosAtivos.length})</span>
+            </button>
+            <button onClick={() => setAbaAtiva("avulso")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
+              <span className="text-lg">➕</span>
+              <span>LANÇAR AVULSO</span>
+            </button>
+            <button onClick={() => setAbaAtiva("pendencias")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pendencias" ? "bg-red-900 text-white border-red-500 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
+              <span className="text-lg">⏳</span>
+              <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
+            </button>
+            <button onClick={() => setAbaAtiva("historico")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
+              <span className="text-lg">📜</span>
+              <span>VENDAS PAGAS ({pedidosPagos.length})</span>
+            </button>
+            <button onClick={() => setAbaAtiva("caixa")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "caixa" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
+              <span className="text-lg">💰</span>
+              <span>CAIXA GERAL</span>
+            </button>
+            <button onClick={() => setModalConfirmarZerarTudo(true)} className="p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all bg-zinc-950 border-red-800 text-red-500 hover:bg-red-950/20">
+              <span className="text-lg">🚨</span>
+              <span>ZERAR SISTEMA</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ================= ABA: PEDIDOS ATIVOS ================= */}
+        {abaAtiva === "pedidos" && (
+          <div className="space-y-6 animate-fade-in uppercase">
+            {pedidosAtivos.length > 0 && (
+              <div className="max-w-xl mx-auto bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl text-center">
+                <button 
+                  type="button"
+                  onClick={() => setMostrarDemandas(!mostrarDemandas)}
+                  className="w-full text-sm font-black text-orange-400 tracking-wider flex items-center justify-center gap-2 py-1"
+                >
+                  👩‍🍳 INSUMOS PARA PREPARO IMEDIATO {mostrarDemandas ? "▲" : "▼"}
+                </button>
+                {mostrarDemandas && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-4 border-t border-zinc-800 pt-4">
+                    {Object.entries(demandasProducao)
+                      .filter(([_, qtd]) => qtd > 0)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([item, qtd]) => (
+                        <div key={item} className="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-800/40 font-black">
+                          <span className="text-zinc-300 w-full text-center">{formatarNomeItem(item)}</span>
+                          <span className="text-lg font-black text-orange-400 bg-zinc-900/80 border border-zinc-800 px-3 py-0.5 rounded-lg">{qtd}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {carregando ? (
+              <div className="text-center py-12 text-zinc-500 text-xs animate-pulse">SINCRONIZANDO BANCO...</div>
+            ) : pedidosAtivos.length === 0 ? (
+              <div className="text-center py-12 bg-zinc-900/40 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold">NENHUM PEDIDO ATIVO NO MOMENTO.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {pedidosAtivos.map((pedido) => {
+                  const estaSendoConcluido = pedidoSelecionadoParaConcluir?.id === pedido.id
+                  return (
+                    <div 
+                      key={pedido.id} 
+                      className={`border text-zinc-100 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between transition-all duration-300 ${
+                        estaSendoConcluido 
+                          ? "bg-emerald-950 border-emerald-400 scale-[1.01] shadow-emerald-900/20" 
+                          : "bg-zinc-900 border-zinc-800"
+                      }`}
+                    >
+                      <div>
+                        <div className={`border rounded-2xl py-2 px-4 flex items-center justify-center ${estaSendoConcluido ? "bg-black/30 border-emerald-500/30" : "bg-black/50 border border-zinc-800"}`}>
+                          <span className={`text-lg font-black tracking-wider ${estaSendoConcluido ? "text-emerald-400 animate-pulse" : "text-orange-400"}`}>
+                            {estaSendoConcluido ? "✓ CONCLUINDO..." : `⏱️ ${pedido.horario}`}
+                          </span>
+                        </div>
+                        <div className={`border-b pb-2.5 text-center space-y-2 mt-2 uppercase ${estaSendoConcluido ? "border-emerald-800/40" : "border-zinc-800/60"}`}>
+                          <div>
+                            <span className={`text-[9px] font-bold block mb-0.5 ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>CLIENTE</span>
+                            <h3 className="font-black text-white text-base tracking-tight">{pedido.nome}</h3>
+                          </div>
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <span className={`text-[9px] font-bold block ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>LOGRADOURO</span>
+                            <span className={`text-xs font-black tracking-wide py-1.5 px-3 rounded-xl border inline-block text-center max-w-full truncate ${
+                              estaSendoConcluido 
+                                ? "text-emerald-300 bg-emerald-400/5 border-emerald-500/20" 
+                                : "text-yellow-400 bg-yellow-400/5 border-yellow-400/10"
+                            }`}>
+                              📍 {pedido.endereco}
+                            </span>
+                          </div>
+                          {pedido.observacao && (
+                            <div className={`border rounded-xl p-3 text-center ${estaSendoConcluido ? "bg-emerald-900/30 border-emerald-500/20" : "bg-orange-500/10 border border-orange-500/20"}`}>
+                              <p className={`text-[10px] font-black mb-1 ${estaSendoConcluido ? "text-emerald-400" : "text-orange-400"}`}>REQUISITO</p>
+                              <p className="text-xs text-zinc-200 font-black">{pedido.observacao}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className={`p-3 rounded-xl border text-xs text-center mt-3 ${estaSendoConcluido ? "bg-black/10 border-emerald-800/30" : "bg-black/20 border border-zinc-800/60"}`}>
+                          <span className={`text-[9px] font-bold block mb-1 uppercase ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-500"}`}>COMPOSIÇÃO</span>
+                          {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
+                            <div key={key} className="flex justify-center items-center text-zinc-100 font-black">
+                              <span><strong className={`${estaSendoConcluido ? "text-emerald-400" : "text-amber-300"} mr-1`}>{qtd}X</strong> {formatarNomeItem(key)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className={`p-3 rounded-xl border flex justify-between items-center text-xs mt-3 uppercase ${estaSendoConcluido ? "bg-black/20 border-emerald-800/40" : "bg-black/40 border border-zinc-800"}`}>
+                          <div>
+                            <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>ESCOLHA</span>
+                            <span className="font-black text-zinc-200 text-[11px]">{pedido.pagamento}</span>
+                            {pedido.pagamento === "Dinheiro" && pedido.troco > 0 && (
+                              <span className="font-black text-red-400 block mt-0.5 text-xs">TROCO: R$ {pedido.troco.toFixed(2)}</span>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>SUBTOTAL</span>
+                            <span className={`text-base font-black ${estaSendoConcluido ? "text-emerald-300" : "text-emerald-400"}`}>R$ {pedido.valorTotal.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="pt-3">
+                        <button 
+                          onClick={() => setPedidoSelecionadoParaConcluir(pedido)} 
+                          className={`w-full py-3.5 rounded-xl font-black text-xs text-white tracking-widest uppercase shadow-md transition-all ${
+                            estaSendoConcluido 
+                              ? "bg-emerald-500 hover:bg-emerald-600 animate-pulse" 
+                              : "bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-95"
+                          }`}
+                        >
+                          {estaSendoConcluido ? "✓ DEFINIR DESTINO" : "➡️ Concluir"}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
-      </div>
-    </div>
-  )}
+
+        {/* ================= ABA: PENDÊNCIAS ================= */}
+        {abaAtiva === "pendencias" && (
+          <div className="space-y-6 animate-fade-in uppercase">
+            <div className="text-center bg-zinc-900 border-2 border-red-900/30 rounded-3xl p-6 shadow-xl max-w-lg mx-auto">
+              <span className="text-2xl">⏳</span>
+              <h2 className="text-sm font-black text-red-400 tracking-widest mt-1">SALA DE AGUARDO DE TRANSFERÊNCIAS</h2>
+              <p className="text-zinc-400 text-[11px] mt-1 font-medium">PEDIDOS ENTREGUES MAS COM RECEBIMENTO NÃO CONFIRMADO NO BANCO.</p>
+            </div>
+            {pedidosPendentes.length === 0 ? (
+              <div className="text-center py-12 bg-zinc-900/30 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold tracking-wide">
+                NENHUMA PENDÊNCIA REGISTRADA NO MOMENTO.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {pedidosPendentes.map((pedido) => (
+                  <div key={pedido.id} className="border bg-zinc-900 border-red-950/40 text-zinc-100 rounded-3xl p-5 shadow-xl flex flex-col justify-between">
+                    
+                    <div className="bg-black/30 border border-zinc-800/60 rounded-2xl p-4 space-y-3.5 text-center">
+                      <div className="border-t border-b border-zinc-800/60 pb-2">
+                        <span className="text-red-400 font-black text-xs tracking-widest block animate-pulse">⚠️ AGUARDANDO PAGAMENTO</span>
+                        <span className="font-mono text-[10px] font-black text-zinc-500 mt-0.5 block">HORÁRIO DE ENVIO: {pedido.horario}</span>
+                      </div>
+                      
+                      <div>
+                        <span className="text-[11px] font-black text-zinc-400 tracking-widest block mb-0.5">⚠️ CLIENTE ⚠️</span>
+                        <h4 className="font-black text-white text-base tracking-wide">{pedido.nome}</h4>
+                        <span className="text-[11px] text-amber-400 block font-semibold mt-1">📍 ENTREGA: {pedido.endereco}</span>
+                      </div>
+                      
+                      <div className="border-t border-b border-zinc-800/40 py-2.5 text-xs text-zinc-300 font-bold space-y-0.5">
+                        <span className="text-[9px] font-black text-zinc-500 block mb-1">PRODUTOS DO CLIENTE</span>
+                        {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
+                          <div key={key}>• {qtd}x {formatarNomeItem(key)}</div>
+                        ))}
+                      </div>
+                      
+                      <div className="pt-1">
+                        <span className="text-zinc-500 font-black text-[9px] tracking-wider block mb-0.5">MÉTODO PROPOSTO: {pedido.pagamento.toUpperCase()}</span>
+                        <p className="text-[10px] font-bold text-zinc-400">VALOR DEVEDOR TOTAL:</p>
+                        <span className="font-black text-red-500 text-xl tracking-tight">R$ {pedido.valorTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pt-4">
+                      <button onClick={() => marcarComoPago(pedido.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-xs uppercase transition-all shadow-md">💰 Confirmar Pagamento</button>
+                      <button onClick={() => enviarMensagemNotificacaoWhats(pedido.nome)} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-xl font-bold text-[11px] uppercase transition-all border border-zinc-700">📱 Avisar Cliente</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= ABA: HISTÓRICO DE PEDIDOS PAGOS ================= */}
+        {abaAtiva === "historico" && (
+          <div className="space-y-6 animate-fade-in uppercase">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl text-xs">
+              <h2 className="text-sm font-black text-emerald-400 tracking-wider border-b border-zinc-800 pb-2 text-center">HISTÓRICO DE PEDIDOS PAGOS</h2>
+              {pedidosPagos.length === 0 ? (
+                <div className="text-center py-6 text-zinc-500 font-bold">NENHUM FLUXO TOTALIZADO NESTE TURNO AINDA.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 font-bold">
+                        <th className="pb-2">NOME DO CLIENTE</th>
+                        <th className="pb-2">VALOR</th>
+                        <th className="pb-2 text-center">VER RESUMO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pedidosPagos.map((pedido) => (
+                        <tr key={pedido.id} className="border-b border-zinc-800/30 hover:bg-zinc-950/20">
+                          <td className="py-3 font-black text-zinc-200">{pedido.nome}</td>
+                          <td className="py-3 font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</td>
+                          <td className="py-3 text-center">
+                            <button 
+                              onClick={() => setPedidoDetalhado(pedido)} 
+                              className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-black px-4 py-1.5 rounded-xl text-[11px] border border-zinc-700/60 transition-all"
+                            >
+                              👁️ DETALHES
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ================= CAIXA GERAL ================= */}
         {abaAtiva === "caixa" && (
           <div className="max-w-4xl mx-auto space-y-6 animate-fade-in uppercase">
