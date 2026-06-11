@@ -455,10 +455,7 @@ export default function ClientePainel() {
             <h1 className="text-2xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
             <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5"></p>
           </div>
-          <div className="absolute right-0 px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            Aberto
-          </div>
+ 
         </div>
       </header>
 
@@ -664,26 +661,26 @@ export default function ClientePainel() {
                 </button>
 
                 {mostrarListaHorarios && (
-                  <div className="mt-2 grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto p-2 bg-zinc-900 border-2 border-orange-500 rounded-xl shadow-inner">
-                    {OPCOES_HORARIOS.map((hora) => (
-                      <button
-                        key={hora}
-                        type="button"
-                        onClick={() => {
-                          setHorario(hora)
-                          setErroValidacao(null)
-                          setMostrarListaHorarios(false)
-                        }}
-                        className={`py-3 text-center rounded-lg font-bold text-xs transition-all ${
-                          horario === hora 
-                            ? "bg-orange-500 text-white font-black shadow-lg" 
-                            : "bg-zinc-950 text-zinc-400 border border-zinc-800"
-                        }`}
-                      >
-                        {hora}
-                      </button>
-                    ))}
-                  </div>
+                 <div className="mt-2 grid grid-cols-4 gap-3 max-h-44 overflow-y-auto p-4 bg-zinc-900 border-2 border-orange-500 rounded-xl shadow-inner">
+                {OPCOES_HORARIOS.map((hora) => (
+<button
+  key={hora}
+  type="button"
+  onClick={() => {
+    setHorario(hora)
+    setErroValidacao(null)
+    setMostrarListaHorarios(false)
+  }}
+  className={`py-5 px-2 text-center rounded-lg font-bold text-base transition-all ${
+    horario === hora 
+      ? "bg-orange-500 text-white font-black shadow-lg scale-[1.05]" 
+      : "bg-zinc-950 text-zinc-400 border border-zinc-800"
+  }`}
+>
+  {hora}
+</button>
+))}
+     </div>
                 )}
               </div>
             </div>
