@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useRef } from "react"
-import { db } from "@/lib/firebase"
+import { useEffect, useState, useRef } from "react";
+import { db } from "@/lib/firebase";
 import {
   collection,
   onSnapshot,
@@ -12,91 +12,166 @@ import {
   addDoc,
   setDoc,
   getDocs
-} from "firebase/firestore"
+} from "firebase/firestore";
 
-
-const PRECODES_PRODUTOS: { [key: string]: number } = {
-  tapiocaMolhada: 8.00,
-  tapiocaManteiga: 6.00,
-  tapiocaQueijo: 8.00,
-  tapiocaOvo: 7.00,
-  tapiocaQueijoOvo: 9.50,
-  cuscuzMilho: 5.00,
-  cuscuzArroz: 6.00,
-  cafe: 4.00
-}
-
-const OPCOES_HORARIOS = [
-  "0:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", 
-  "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", 
-  "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", 
-  "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", 
-  "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", 
-  "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", 
-  "23:30"
-]
-
-function tocarSomPedido() {
-  const audio = new Audio('/pedido.mp3');
-  audio.play().catch(err => {
-    console.log('Erro ao tocar áudio:', err);
-  });
-}
-
-function formatarNomeItem(nomeChave: string) {
-  const nomes: { [key: string]: string } = {
-    tapiocaMolhada: "Tapioca Molhada",
-    tapiocaManteiga: "🧈 Tapioca com Manteiga",
-    tapiocaQueijo: "🧀 Tapioca com Queijo",
-    tapiocaOvo: "🥚 Tapioca com Ovo",
-    tapiocaQueijoOvo: "🧀🥚 Tapioca Queijo e Ovo",
-    cuscuzMilho: "🌽 Cuscuz de Milho",
-    cuscuzArroz: "🍚 Cuscuz de Arroz",
-    cafe: "☕ Café"
-  }
-  return nomes[nomeChave] || nomeChave
-}
-
-interface Pedido {
-  id: string
-  nome: string
-  endereco: string
-  observacao?: string
-  pagamento: string
-  troco: number
-  valorTotal: number
-  horario: string
-  pago: boolean
-  concluido: boolean
-  statusPagamento?: "pendente" | "pago"
-  dataCriacao?: any
-  itens: {
-    tapiocaMolhada: number
-    tapiocaManteiga: number
-    tapiocaQueijo: number
-    tapiocaOvo: number
-    tapiocaQueijoOvo: number
-    cuscuzMilho: number
-    cuscuzArroz: number
-    cafe: number
-  }
-}
-
-interface HistoricoCaixa {
-  id: string
-  tipo: "fechamento_turno"
-  data: string
-  totalPix: number
-  totalDinheiro: number
-  despesas: number
-  saldoLiquido: number
+// 🎨 CORES OFICIAIS TAPICUZ
+const cores = {
+  fundoGeral: "#FFFFFF",         // Branco puro
+  fundoSecao: "#FFFAF5",         // Branco quente, suave
+  primaria: "#F97316",           // Laranja principal
+  primariaClara: "#FFEDD5",      // Laranja clarinho
+  textoPrincipal: "#27272A",     // Cinza escuro (melhor que preto puro)
+  textoSecundario: "#71717A",    // Cinza médio
+  sucesso: "#10B981",            // Verde
+  alerta: "#F59E0B",             // Amarelo
+  erro: "#EF4444",               // Vermelho
+  borda: "#F3F4F6",              // Cinza bem claro para divisórias
 }
 
 export default function AdminPainel() {
+  // 🆕 NOVO: Estados para produtos vindos do banco
+  const [produtos, setProdutos] = useState<{id: string, chave: string, nome: string, preco: number, icone: string, disponivel: boolean}[]>([])
+  const [editandoProduto, setEditandoProduto] = useState<any>(null)
+  const [novoPreco, setNovoPreco] = useState("")
+  const [novoNome, setNovoNome] = useState("")
+  const [novoDisponivel, setNovoDisponivel] = useState(true) // ✅ Controle de disponibilidade
+
+  // ✅ SEUS HORÁRIOS ORIGINAIS — IGUAL ANTES
+  const OPCOES_HORARIOS = [
+    "0:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", 
+    "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", 
+    "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", 
+    "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", 
+    "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", 
+    "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", 
+    "23:30"
+  ]
+
+  // ✅ SEU SOM DE NOTIFICAÇÃO ORIGINAL
+  function tocarSomPedido() {
+    const audio = new Audio('/pedido.mp3');
+    audio.play().catch(err => {
+      console.log('Erro ao tocar áudio:', err);
+    });
+  }
+
+  // 🆕 Função para pegar preço do banco
+  function pegarPreco(chave: string): number {
+    const p = produtos.find(pr => pr.chave === chave)
+    return p?.preco || 0
+  }
+
+  // 🆕 Função para formatar nome (agora do banco)
+  function formatarNomeItem(nomeChave: string) {
+    const p = produtos.find(pr => pr.chave === nomeChave)
+    return p ? `${p.icone} ${p.nome}` : nomeChave
+  }
+
+  // 🆕 Buscar produtos do banco automaticamente
+  useEffect(() => {
+    const qProdutos = query(collection(db, "produtos"))
+    const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
+      const lista: any[] = []
+      snap.forEach(d => lista.push({ id: d.id, ...d.data() }))
+      // ✅ Correção do erro: não quebra se não tiver nome
+      lista.sort((a, b) => {
+        const nomeA = a?.nome || ""
+        const nomeB = b?.nome || ""
+        return nomeA.localeCompare(nomeB)
+      })
+      setProdutos(lista)
+    })
+    return () => unsubscribeProdutos()
+  }, [])
+
+  // 🆕 Salvar alteração de produto
+  async function salvarAlteracaoProduto() {
+    if (!editandoProduto) return
+    try {
+      await updateDoc(doc(db, "produtos", editandoProduto.id), {
+        nome: novoNome,
+        preco: parseFloat(novoPreco),
+        disponivel: novoDisponivel // ✅ Salva status no Firebase
+      })
+      setEditandoProduto(null)
+      setNotificacaoCaixa("✅ Produto atualizado com sucesso!")
+      setTimeout(() => setNotificacaoCaixa(null), 2000)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+  async function apagarHistoricoCaixas() {
+  const confirmar = window.confirm(
+    "Tem certeza que deseja apagar TODO o histórico de fechamentos?"
+  )
+
+  if (!confirmar) return
+
+  try {
+    const snap = await getDocs(collection(db, "historico_caixas"))
+
+    await Promise.all(
+      snap.docs.map(item =>
+        deleteDoc(doc(db, "historico_caixas", item.id))
+      )
+    )
+
+    setHistoricoCaixas([])
+
+    setNotificacaoCaixa("🗑️ Histórico apagado com sucesso!")
+    setTimeout(() => setNotificacaoCaixa(null), 3000)
+
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+
+  // ==============================================
+  // ✅ TODO O RESTO DO SEU CÓDIGO ORIGINAL
+  // ==============================================
+  interface Pedido {
+    id: string
+    nome: string
+    endereco: string
+    observacao?: string
+    pagamento: string
+    troco: number
+    valorTotal: number
+    horario: string
+    pago: boolean
+    concluido: boolean
+    statusPagamento?: "pendente" | "pago"
+    dataCriacao?: any
+    itens: {
+      tapiocaMolhada: number
+      tapiocaManteiga: number
+      tapiocaQueijo: number
+      tapiocaOvo: number
+      tapiocaQueijoOvo: number
+      cuscuzMilho: number
+      cuscuzArroz: number
+      cuscuzMilhoArroz: number // ✅ Cuscuz Misto adicionado
+      cafe: number
+    }
+  }
+
+  interface HistoricoCaixa {
+    id: string
+    tipo: "fechamento_turno"
+    data: string
+    totalPix: number
+    totalDinheiro: number
+    despesas: number
+    saldoLiquido: number
+  }
+  
+
+
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [historicoCaixas, setHistoricoCaixas] = useState<HistoricoCaixa[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [abaAtiva, setAbaAtiva] = useState<"pedidos" | "avulso" | "historico" | "caixa" | "pendencias" | "zerar">("pedidos")
+  const [abaAtiva, setAbaAtiva] = useState<"pedidos" | "avulso" | "historico" | "caixa" | "pendencias" | "zerar" | "produtos" | "demandas" | "ranking">("pedidos")
   const [lojaAberta, setLojaAberta] = useState<boolean>(true)
 
   const [notificacaoCaixa, setNotificacaoCaixa] = useState<string | null>(null)
@@ -133,18 +208,20 @@ export default function AdminPainel() {
     tapiocaQueijoOvo: 0,
     cuscuzMilho: 0,
     cuscuzArroz: 0,
+    cuscuzMilhoArroz: 0, // ✅ Cuscuz Misto adicionado
     cafe: 0,
   })
-
-  // Guardando a quantidade anterior na referência (NÃO causa re-render)
+  
+   // Guardando a quantidade anterior na referência
   const ultimoTotalPedidos = useRef(0)
 
   useEffect(() => {
     const refLoja = doc(db, "configuracoes", "loja")
     const unsubscribeStatus = onSnapshot(refLoja, (snap) => {
       if (snap.exists()) {
-        setLojaAberta(snap.data().aberta)
-        setTotalDespesasAcumuladas(snap.data().despesas || 0)
+        const dados = snap.data()
+        setLojaAberta(dados.aberta)
+        setTotalDespesasAcumuladas(dados.despesas || 0)
       }
     })
 
@@ -152,7 +229,17 @@ export default function AdminPainel() {
     const unsubscribeCaixas = onSnapshot(qCaixas, (snap) => {
       const lista: HistoricoCaixa[] = []
       snap.forEach(d => lista.push({ id: d.id, ...d.data() } as HistoricoCaixa))
-      setHistoricoCaixas(lista.sort((a,b) => b.data.localeCompare(a.data)))
+      
+      // ✅ CORRIGIDO: usa dataHora + proteção contra indefinido
+      lista.sort((a, b) => {
+        // Se não tem dataHora, joga pro final
+        if (!a.dataHora) return 1
+        if (!b.dataHora) return -1
+        // Mais recente primeiro
+        return b.dataHora.localeCompare(a.dataHora)
+      })
+
+      setHistoricoCaixas(lista)
     })
 
     return () => {
@@ -168,25 +255,21 @@ export default function AdminPainel() {
       querySnapshot.forEach((doc) => {
         listaPedidos.push({ id: doc.id, ...doc.data() } as Pedido)
       })
-      listaPedidos.sort((a, b) => a.horario.localeCompare(b.horario))
-
+      
+      // ✅ CORRIGIDO: proteção também aqui no horário
+      listaPedidos.sort((a, b) => {
+        if (!a.horario) return 1
+        if (!b.horario) return -1
+        return a.horario.localeCompare(b.horario)
+      })
       // 🔊 DETECTOR DE NOVO PEDIDO
       const pedidosAtivosAtuais = listaPedidos.filter(p => !p.concluido).length
       
       if (ultimoTotalPedidos.current > 0 && pedidosAtivosAtuais > ultimoTotalPedidos.current) {
-        const audio = new Audio("/pedido.mp3")
-        
-        audio.play().catch((erro) => {
-          console.log(
-            "Áudio bloqueado pelo navegador. Clique na página para ativar o som dos pedidos! 🔊", 
-            erro
-          )
-        })
+        tocarSomPedido(); 
       }
 
-      // Atualiza a referência com o total atual de pedidos ativos
       ultimoTotalPedidos.current = pedidosAtivosAtuais
-
       setPedidos(listaPedidos)
       setCarregando(false)
     })
@@ -200,7 +283,7 @@ export default function AdminPainel() {
     let qtdCafes = itensAvulsos.cafe
 
     Object.entries(itensAvulsos).forEach(([key, qtd]) => {
-      subtotal += (PRECODES_PRODUTOS[key] || 0) * qtd
+      subtotal += (pegarPreco(key) || 0) * qtd 
       if (key !== "cafe") qtdComidas += qtd
     })
 
@@ -213,7 +296,7 @@ export default function AdminPainel() {
         if (key !== "cafe" && qtd > 0) {
           const comidasDesteTipoNoCombo = Math.min(qtd, CabalCombos - cafesAplicados)
           if (comidasDesteTipoNoCombo > 0) {
-            const descontoPorPar = (PRECODES_PRODUTOS[key] + PRECODES_PRODUTOS.cafe) - 10.00
+            const descontoPorPar = (pegarPreco(key) + pegarPreco("cafe")) - 10.00 
             descontoTotal += descontoPorPar * comidasDesteTipoNoCombo
             cafesAplicados += comidasDesteTipoNoCombo
           }
@@ -222,7 +305,8 @@ export default function AdminPainel() {
       subtotal -= descontoTotal
     }
     setValorTotalAvulso(subtotal.toFixed(2))
-  }, [itensAvulsos])
+  }, [itensAvulsos, produtos]) 
+
 
   const valorTotalAvulsoNumerico = parseFloat(valorTotalAvulso) || 0
   const trocoParaAvulsoNumerico = parseFloat(trocoParaAvulso.replace(",", ".")) || 0
@@ -250,7 +334,7 @@ export default function AdminPainel() {
           setMostrarModalCopiado(true)
         })
         .catch(err => {
-          console.error("Erro na API clipboard, tentando fallback estrutural", err)
+          console.error("Erro na API clipboard", err)
         })
     } else {
       const textArea = document.createElement("textarea")
@@ -355,14 +439,20 @@ export default function AdminPainel() {
   async function executarFechamentoTurno() {
     const saldoLiquidoCalculado = faturamentoTotal - totalDespesasAcumuladas
 
-    const dadosFechamento = {
-      tipo: "fechamento_turno",
-      data: new Date().toLocaleString("pt-BR"),
-      totalPix,
-      totalDinheiro,
-      despesas: totalDespesasAcumuladas,
-      saldoLiquido: saldoLiquidoCalculado
-    }
+const dadosFechamento = {
+  tipo: "fechamento_turno",
+  data: new Date().toISOString(),
+  dataHora: new Date().toLocaleString("pt-BR"),
+
+  faturado: faturamentoTotal,
+
+  totalPix,
+  totalDinheiro,
+
+  despesas: totalDespesasAcumuladas,
+
+  saldoLiquido: saldoLiquidoCalculado
+}
 
     try {
       await addDoc(collection(db, "historico_caixas"), dadosFechamento)
@@ -437,7 +527,7 @@ export default function AdminPainel() {
       setObservacaoAvulso("")
       setPagamentoAvulso("Pix")
       setTrocoParaAvulso("")
-      setItensAvulsos({ tapiocaMolhada:0, tapiocaManteiga:0, tapiocaQueijo:0, tapiocaOvo:0, tapiocaQueijoOvo:0, cuscuzMilho:0, cuscuzArroz:0, cafe:0 })
+      setItensAvulsos({ tapiocaMolhada:0, tapiocaManteiga:0, tapiocaQueijo:0, tapiocaOvo:0, tapiocaQueijoOvo:0, cuscuzMilho:0, cuscuzArroz:0, cuscuzMilhoArroz:0, cafe:0 })
       setMostrarResumoFinalAvulso(false)
       
       setNotificacaoCaixa("Pedido processado com sucesso! 🎉")
@@ -476,6 +566,7 @@ export default function AdminPainel() {
     tapiocaQueijoOvo: 0,
     cuscuzMilho: 0,
     cuscuzArroz: 0,
+    cuscuzMilhoArroz: 0, // ✅ Cuscuz Misto adicionado
     cafe: 0,
   }
 
@@ -486,54 +577,266 @@ export default function AdminPainel() {
     })
   })
 
+
   return (
-    <main className="min-h-screen bg-zinc-950 p-4 sm:p-8 text-zinc-100 relative tracking-wide font-sans">
-      
-      {/* ================= NOTIFICADOR FLUTUANTE DE TOPO ================= */}
+   <main className="min-h-screen bg-gradient-to-br from-[#FFFAF5] via-[#FFFFFF] to-[#FFFAF5] text-[#27272A] py-6 px-3 sm:px-4 relative overflow-x-hidden">
+      {/* ✅ Notificação flutuante */}
       {notificacaoCaixa && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] animate-bounce">
-          <span className="text-xs font-black text-black bg-yellow-400 border-2 border-yellow-300 shadow-2xl px-8 py-3.5 rounded-2xl tracking-widest uppercase block text-center">
-            {notificacaoCaixa}
-          </span>
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-orange-500 text-orange-300 px-6 py-3 rounded-2xl font-black uppercase shadow-2xl animate-pulse">
+          {notificacaoCaixa}
         </div>
       )}
 
-      {/* ================= MODAL EXPLICATIVO DE SUCESSO DE CÓPIA ================= */}
+      {/* ✅ Modal de Copiado */}
       {mostrarModalCopiado && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border-2 border-emerald-400 w-full max-w-xs rounded-3xl p-6 text-center space-y-4 shadow-2xl animate-fade-in">
-            <span className="text-4xl block animate-bounce">📋</span>
-            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest">RESUMO COPIADO COM SUCCESSO!</h3>
-            <p className="text-zinc-400 text-xs uppercase font-bold leading-relaxed">O texto do cliente foi armazenado com sucesso na memória do dispositivo. Pode abrir o WhatsApp e colar!</p>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#FFFAF5] border border-emerald-500/30 w-full max-w-xs rounded-3xl p-6 text-center shadow-2xl">
+            <span className="text-5xl mb-3 block">📋</span>
+            <h3 className="text-lg font-black text-emerald-400 uppercase mb-2">Copiado!</h3>
+            <p className="text-[#71717A] text-sm mb-4">Resumo do pedido copiado para área de transferência.</p>
             <button 
-              onClick={() => setMostrarModalCopiado(false)}
-              className="w-full py-2.5 bg-emerald-400 hover:bg-emerald-500 text-black font-black text-xs uppercase rounded-xl transition-all"
+              onClick={() => setMostrarModalCopiado(false)} 
+              className="w-full py-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-black uppercase hover:bg-emerald-500/30 transition-all"
             >
-              Confirmado 👌
+              OK
             </button>
           </div>
         </div>
       )}
 
-      {/* ================= MODAL DE CONFIGURAÇÃO MÁXIMA DE FORÇAR RESET GERAL ================= */}
-      {modalConfirmarZerarTudo && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border-2 border-red-500 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-            <div className="space-y-1">
-              <span className="text-3xl">⚠️</span>
-              <h2 className="text-sm font-black text-red-500 tracking-wider uppercase">VOCÊ TEM CERTEZA ABSOLUTA?</h2>
-              <p className="text-zinc-400 text-xs uppercase font-bold">Isso irá apagar todos os pedidos ativos, pendentes e o histórico do turno atual imediatamente sem salvar nada!</p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 pt-2">
-              <button 
-                onClick={apagarSistemaGeralEZero} 
-                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg"
+    {/* ✅ Modal: Detalhes do Pedido */}
+{pedidoDetalhado && (
+  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="bg-[#FFFFFF] border-2 border-[#F97316]/20 w-full max-w-lg rounded-3xl p-6 space-y-5 shadow-2xl my-6">
+      
+      {/* CABEÇALHO */}
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-black text-[#F97316] uppercase tracking-wider">Detalhes do Pedido</h3>
+        <button 
+          onClick={() => setPedidoDetalhado(null)}
+          className="w-10 h-10 bg-[#FFEDD5] hover:bg-[#F97316]/10 rounded-full flex items-center justify-center text-[#F97316] text-lg transition-all"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="space-y-4 text-sm">
+        
+        {/* 🟡 CLIENTE + 🕓 HORÁRIO (AGORA FICOU ENORME!) */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
+            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Cliente</p>
+            <p className="font-bold text-[#27272A] text-lg">{pedidoDetalhado.nome}</p>
+          </div>
+          
+          {/* 👇 AQUI É O HORÁRIO - AGORA O MAIOR DE TUDO 👇 */}
+          <div className="bg-gradient-to-br from-[#F97316]/10 to-[#FB923C]/15 rounded-xl border-2 border-[#F97316]/30 flex flex-col items-center justify-center py-2">
+            <p className="text-[10px] font-black text-[#71717A] uppercase tracking-wider mb-0.5">Horário</p>
+            <p className="font-black text-[#F97316] text-[42px] leading-none tracking-widest">
+              {pedidoDetalhado.horario}
+            </p>
+          </div>
+        </div>
+
+        {/* ENDEREÇO */}
+        <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
+          <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Endereço</p>
+          <p className="font-medium text-[#27272A]">{pedidoDetalhado.endereco}</p>
+        </div>
+
+        {/* OBSERVAÇÃO (DESTAQUE VERMELHO) */}
+        {pedidoDetalhado.observacao && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-xl">
+            <p className="text-xs font-black text-red-600 uppercase mb-1 tracking-wide">Observação</p>
+            <p className="font-bold text-red-700">{pedidoDetalhado.observacao}</p>
+          </div>
+        )}
+
+        {/* ITENS */}
+        <div className="border-t border-[#F3F4F6] pt-4">
+          <p className="text-xs font-black text-[#71717A] uppercase mb-3 tracking-wide">Itens Pedidos</p>
+          <div className="space-y-2 pl-2">
+            {Object.entries(pedidoDetalhado.itens).map(([chave, qtd]) => qtd > 0 && (
+              <div key={chave} className="flex justify-between items-center bg-[#FFFAF5]/60 py-2 px-3 rounded-lg">
+                <span className="text-[#27272A] font-medium">{formatarNomeItem(chave)}</span>
+                <span className="text-[#F97316] font-black text-lg">{qtd}x</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PAGAMENTO + VALOR */}
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
+            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Pagamento</p>
+            <span className={`inline-block mt-1 px-3 py-1.5 rounded-lg text-xs font-black uppercase w-full text-center ${
+              pedidoDetalhado.pagamento === "Pix" 
+                ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
+                : "bg-amber-100 text-amber-700 border border-amber-200"
+            }`}>
+              {pedidoDetalhado.pagamento}
+            </span>
+          </div>
+          
+          <div className="bg-[#F0FDF4] p-3 rounded-xl border border-emerald-100">
+            <p className="text-xs font-black text-emerald-700 uppercase mb-1 tracking-wide">Valor Total</p>
+            <p className="text-lg font-black text-emerald-600">R$ {pedidoDetalhado.valorTotal.toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* TROCO (SE TIVER) */}
+        {pedidoDetalhado.troco > 0 && (
+          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
+            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Troco</p>
+            <p className="font-bold text-[#27272A]">R$ {pedidoDetalhado.troco.toFixed(2)}</p>
+          </div>
+        )}
+
+        {/* BOTÕES DE AÇÃO */}
+        <div className="flex gap-2 pt-3">
+          {pedidoDetalhado.statusPagamento === "pendente" && (
+            <button
+              onClick={() => marcarComoPago(pedidoDetalhado.id)}
+              className="flex-1 py-3 bg-emerald-500/10 text-emerald-700 border-2 border-emerald-500/30 rounded-xl font-black text-sm uppercase hover:bg-emerald-500/20 transition-all active:scale-[0.98]"
+            >
+              ✅ Marcar como Pago
+            </button>
+          )}
+          <button
+            onClick={() => deletarDoHistorico(pedidoDetalhado.id)}
+            className="flex-1 py-3 bg-red-500 text-red-700 border-2 border-red-200 rounded-xl font-black text-sm uppercase hover:bg-red-100 transition-all active:scale-[0.98]"
+          >
+            🗑️ Excluir
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+      {/* ✅ Modal: Confirmar Conclusão Pedido */}
+      {pedidoSelecionadoParaConcluir && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+            <h3 className="text-lg font-black text-orange-400 uppercase text-center tracking-wider">Concluir Pedido?</h3>
+            <p className="text-center text-[#71717A] font-bold">Deseja marcar esse pedido como pago ou deixá-lo nas pendências?</p>
+            
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => processarDecisaoPedidoExistente(true)}
+                className="py-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-black uppercase hover:bg-emerald-500/30 transition-all"
               >
-                💥 APAGAR E ZERAR TUDO AGORA
+                ✅ PAGO
+              </button>
+              <button
+                onClick={() => processarDecisaoPedidoExistente(false)}
+                className="py-3 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl font-black uppercase hover:bg-amber-500/30 transition-all"
+              >
+                ⏳ PENDENTE
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setPedidoSelecionadoParaConcluir(null)} 
+              className="w-full py-2.5 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal: Resumo Final Pedido Avulso */}
+      {mostrarResumoFinalAvulso && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl my-4">
+            <h3 className="text-lg font-black text-orange-400 uppercase text-center tracking-wider">Confirmar Pedido?</h3>
+            
+            <div className="bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-4 whitespace-pre-line text-sm font-mono text-[#71717A] max-h-[400px] overflow-y-auto">
+              {gerarResumoPedidoWhatsApp()}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 pt-2">
+              <button
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
+                className="py-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-black uppercase hover:bg-emerald-500/30 transition-all"
+              >
+                ✅ Já Foi Pago
+              </button>
+              <button
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
+                className="py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl font-black uppercase hover:bg-blue-500/30 transition-all"
+              >
+                ⏳ Aguardar Pagamento
+              </button>
+              <button
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
+                className="py-3 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl font-black uppercase hover:bg-amber-500/30 transition-all"
+              >
+                📌 Deixar Pendente
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setMostrarResumoFinalAvulso(false)} 
+              className="w-full py-2.5 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal: Confirmar Fechamento de Turno */}
+      {modalConfirmarTurno && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+            <h3 className="text-lg font-black text-orange-400 uppercase text-center tracking-wider">Arquivar Turno?</h3>
+            <p className="text-center text-[#71717A] font-bold">Isso irá salvar o caixa atual no histórico e limpar todos os pedidos. <span className="text-red-400">Essa ação não pode ser desfeita!</span></p>
+            
+            <div className="bg-[#FFFFFF] p-3 rounded-xl space-y-1.5 text-sm">
+              <div className="flex justify-between"><span className="text-[#71717A]">Total Faturado:</span><span className="font-black text-emerald-400">R$ {faturamentoTotal.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-[#71717A]">Despesas:</span><span className="font-black text-red-400">- R$ {totalDespesasAcumuladas.toFixed(2)}</span></div>
+              <div className="border-t border-[#F3F4F6] my-1"></div>
+              <div className="flex justify-between text-lg"><span className="text-[#27272A] font-black">Saldo Líquido:</span><span className="font-black text-orange-400">R$ {saldoLiquidoAtual.toFixed(2)}</span></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={executarFechamentoTurno}
+                className="py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black uppercase rounded-xl transition-all"
+              >
+                SIM, ARQUIVAR
+              </button>
+              <button 
+                onClick={() => setModalConfirmarTurno(true)} 
+                className="py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal: Confirmar Zerar Sistema */}
+      {modalConfirmarZerarTudo && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#FFFAF5] border border-red-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+            <span className="text-5xl text-red-500 text-center block">🚨</span>
+            <h3 className="text-lg font-black text-red-400 uppercase text-center tracking-wider">Zerar Sistema?</h3>
+            <p className="text-center text-[#71717A] font-bold">Você tem CERTEZA? Isso irá APAGAR TODOS os pedidos, zerar despesas e reiniciar o caixa. <span className="text-red-400 font-black">NÃO HÁ COMO RECUPERAR!</span></p>
+            
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={apagarSistemaGeralEZero}
+                className="py-3 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-black uppercase hover:bg-red-500/30 transition-all"
+              >
+                SIM, APAGAR TUDO
               </button>
               <button 
                 onClick={() => setModalConfirmarZerarTudo(false)} 
-                className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
+                className="py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all"
               >
                 Cancelar
               </button>
@@ -542,401 +845,690 @@ export default function AdminPainel() {
         </div>
       )}
 
-      {/* ================= MODAL DE DECISÃO: CONCLUIR PEDIDO EXISTENTE ================= */}
-      {pedidoSelecionadoParaConcluir && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-            <div className="space-y-1">
-              <span className="text-xl">💰</span>
-              <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">O PEDIDO DE {pedidoSelecionadoParaConcluir.nome} JÁ FOI PAGO?</h2>
-              <p className="text-zinc-400 text-xs">Selecione o status de pagamento para arquivar.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 pt-2">
-              <button 
-                onClick={() => processarDecisaoPedidoExistente(true)} 
-                className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-              >
-                🟢 Sim, foi pago! (Ir para Vendas)
-              </button>
-              <button 
-                onClick={() => processarDecisaoPedidoExistente(false)} 
-                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-              >
-                🔴 Não foi pago! (Ir para Pendências)
-              </button>
-              <button 
-                onClick={() => setPedidoSelecionadoParaConcluir(null)} 
-                className="py-2.5 mt-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+     {/* ✅ Cabeçalho Principal */}
+<div className="mb-6 text-center">
+  <h1 className="text-[clamp(1.8rem,5vw,3rem)] font-black uppercase tracking-wider mb-2 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500 bg-clip-text text-transparent">
+    Painel Tapicuz
+  </h1>
+  <div className="flex items-center justify-center gap-3">
+    <div className={`w-3 h-3 rounded-full ${lojaAberta ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
+    <button 
+      onClick={alternarStatusLoja} 
+      className={`text-xs font-black uppercase px-3 py-1.5 rounded-full border transition-all ${lojaAberta ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20"}`}
+    >
+      {lojaAberta ? "SISTEMA ONLINE" : "SISTEMA OFFLINE"}
+    </button>
+  </div>
+</div>
 
-      {/* ================= MODAL: FLUXO DE ROTEAMENTO TRIPLO DO AVULSO ================= */}
-      {mostrarResumoFinalAvulso && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl text-center">
-            <div className="space-y-1">
-              <span className="text-xl">⚡</span>
-              <h2 className="text-sm font-black text-orange-400 tracking-wider uppercase">ONDE DESEJA LANÇAR ESTE PEDIDO?</h2>
-              <p className="text-zinc-400 text-[11px]">Escolha a destinação correta para manter a organização.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-2.5 pt-2">
-              <button 
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")} 
-                disabled={criandoAvulso} 
-                className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-              >
-                🟢 PEDIDO PAGO (IR DIRETO P/ SOMA)
-              </button>
-              <button 
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")} 
-                disabled={criandoAvulso} 
-                className="py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-              >
-                🟡 MANDAR P/ FILA DE ESPERA (PRODUÇÃO)
-              </button>
-              <button 
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")} 
-                disabled={criandoAvulso} 
-                className="py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all"
-              >
-                🔴 VALOR NÃO PAGO (IR P/ PENDÊNCIAS)
-              </button>
-              <button 
-                onClick={() => setMostrarResumoFinalAvulso(false)} 
-                className="py-2.5 mt-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl font-bold text-xs uppercase"
-              >
-                ← Voltar e Ajustar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ================= MODAL DE FECHAMENTO CHAVE COFRE ================= */}
-      {modalConfirmarTurno && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 text-center space-y-4 shadow-2xl text-xs">
-            <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center text-lg mx-auto font-bold">🗂️</div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-black text-zinc-200 uppercase tracking-wide">RESUMO DO TURNO</h3>
-            </div>
-            <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-left space-y-2 uppercase">
-              <div className="flex justify-between text-zinc-400"><span>PIX LIQUIDADO:</span><span className="font-bold text-teal-400">R$ {totalPix.toFixed(2)}</span></div>
-              <div className="flex justify-between text-zinc-400"><span>DINHEIRO:</span><span className="font-bold text-amber-500">R$ {totalDinheiro.toFixed(2)}</span></div>
-              <div className="flex justify-between text-zinc-400"><span>DESPESAS:</span><span className="font-bold text-red-400">R$ {totalDespesasAcumuladas.toFixed(2)}</span></div>
-              <div className="flex justify-between text-white border-t border-zinc-900 pt-2 font-black mt-1">
-                <span>SALDO LÍQUIDO:</span>
-                <span className="text-emerald-400 text-sm">R$ {saldoLiquidoAtual.toFixed(2)}</span>
+{/* ✅ Menu de Navegação */}
+<div className="mb-8">
+  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
+    
+    {/* 📋 EM ANDAMENTO */}
+    <button 
+      onClick={() => setAbaAtiva("pedidos")} 
+      className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+    >
+      <span className="text-lg">📋</span>
+      <span>EM ANDAMENTO ({pedidosAtivos.length})</span>
+    </button>
+
+{/* ➕ LANÇAR PEDIDO */}
+<button 
+  onClick={() => setAbaAtiva("avulso")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">➕</span>
+  <span>LANÇAR PEDIDO</span>
+</button>
+
+{/* ⏳ PENDÊNCIAS */}
+<button 
+  onClick={() => setAbaAtiva("pendencias")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pendencias" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">⏳</span>
+  <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
+</button>
+
+{/* ⚙️ PRODUTOS */}
+<button 
+  onClick={() => setAbaAtiva("produtos")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "produtos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">⚙️</span>
+  <span>PRODUTOS</span>
+</button>
+
+{/* 📜 VENDAS PAGAS */}
+<button 
+  onClick={() => setAbaAtiva("historico")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">📜</span>
+  <span>VENDAS PAGAS ({pedidosPagos.length})</span>
+</button>
+
+{/* 💰 CAIXA GERAL */}
+<button 
+  onClick={() => setAbaAtiva("caixa")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "caixa" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">💰</span>
+  <span>CAIXA GERAL</span>
+</button>
+
+{/* 🆕 DEMANDAS - AGORA FUNCIONANDO */}
+<button 
+  onClick={() => setAbaAtiva("demandas")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "demandas" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">📋</span>
+  <span>DEMANDAS ({pedidos.length})</span>
+</button>
+
+{/* 🆕 RANKING - AGORA FUNCIONANDO */}
+<button 
+  onClick={() => setAbaAtiva("ranking")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "ranking" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">📈</span>
+  <span>RANKING</span>
+</button>
+
+{/* 🚨 ZERAR SISTEMA */}
+<button 
+  onClick={() => setModalConfirmarZerarTudo(true)} 
+  className="p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all bg-[#FFFFFF] border-red-800 text-red-500 hover:bg-red-950/20"
+>
+  <span className="text-lg">🚨</span>
+  <span>ZERAR SISTEMA</span>
+</button>
+
+</div>
+</div>
+{/* ================= CONTEÚDO DAS ABAS ================= */}
+{carregando ? (
+  <div className="flex items-center justify-center py-20">
+    <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+) : (
+  <div className="space-y-6">
+
+    {/* ================================================== */}
+    {/* ================= ABA: PRODUTOS ================== */}
+    {/* ================================================== */}
+    {abaAtiva === "produtos" && (
+      <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+        <div className="mb-6">
+          <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider flex items-center gap-2">
+            <span>⚙️</span> Gerenciar Produtos e Preços
+          </h2>
+          <p className="text-zinc-500 text-xs mt-1">Edite nomes, preços e ícones. Alterações salvam automaticamente no sistema.</p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-[#F3F4F6]">
+                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Ícone</th>
+                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Nome do Produto</th>
+                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Preço (R$)</th>
+                <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/50">
+              {produtos.map((produto) => (
+                <tr key={produto.id} className="hover:bg-[#FFEDD5]/30 transition-colors">
+                  <td className="p-3 text-xl">{produto.icone}</td>
+                  <td className="p-3 font-bold">{produto.nome}</td>
+                  <td className="p-3 font-mono font-bold text-emerald-400">
+                    R$ {produto.preco.toFixed(2)}
+                  </td>
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => {
+                        setEditandoProduto(produto)
+                        setNovoNome(produto.nome)
+                        setNovoPreco(produto.preco.toString())
+                        setNovoDisponivel(produto.disponivel ?? true)
+                      }}
+                      className="px-4 py-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg text-xs font-black uppercase hover:bg-orange-500/20 transition-all"
+                    >
+                      ✏️ Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* MODAL DE EDIÇÃO DE PRODUTO */}
+        {editandoProduto && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-black text-orange-400 uppercase tracking-wider">
+                  Editar Produto
+                </h3>
+                <button 
+                  onClick={() => setEditandoProduto(null)}
+                  className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-full flex items-center justify-center text-[#71717A]"
+                >
+                  ✕
+                </button>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button type="button" onClick={() => setModalConfirmarTurno(false)} className="py-3 bg-zinc-800 hover:bg-zinc-700 font-bold rounded-xl text-zinc-300 uppercase">VOLTAR</button>
-              <button type="button" onClick={executarFechamentoTurno} className="py-3 bg-gradient-to-r from-orange-600 to-amber-600 font-black rounded-xl text-white uppercase transition-all">CONFIRMAR & FECHAR</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ================= MODAL DETALHES DO PEDIDO ================= */}
-      {pedidoDetalhado && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl text-xs uppercase">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
-              <h2 className="text-sm font-black tracking-wider text-orange-400">RESUMO COMPLETO DO PEDIDO</h2>
-              <button onClick={() => setPedidoDetalhado(null)} className="w-7 h-7 bg-zinc-800 hover:bg-zinc-700 rounded-full flex items-center justify-center text-zinc-400 text-sm font-bold">✕</button>
-            </div>
-            <div className="space-y-2.5 bg-zinc-950 p-4 rounded-2xl border border-zinc-800">
-              <div className="flex justify-between"><span className="text-zinc-500 font-bold">CLIENTE:</span><span className="font-black text-white text-sm">{pedidoDetalhado.nome}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500 font-bold">HORÁRIO:</span><span className="font-black text-amber-400">⏱ {pedidoDetalhado.horario}</span></div>
-              <div className="flex flex-col gap-0.5 border-t border-zinc-800/40 pt-1.5"><span className="text-zinc-500 font-bold">LOCAL DE ENTREGA:</span><span className="font-bold text-zinc-300">{pedidoDetalhado.endereco}</span></div>
-              {pedidoDetalhado.observacao && (
-                <div className="mt-1 bg-zinc-900 p-2.5 border border-zinc-800 rounded-xl">
-                  <span className="text-orange-400 font-bold block text-[10px]">OBSERVAÇÃO:</span>
-                  <span className="text-zinc-300 font-black">{pedidoDetalhado.observacao}</span>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Nome do Produto</label>
+                  <input
+                    type="text"
+                    value={novoNome}
+                    onChange={(e) => setNovoNome(e.target.value)}
+                    className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  />
                 </div>
-              )}
-              <div className="flex justify-between border-t border-zinc-800/50 pt-2">
-                <span className="text-zinc-500 font-bold">MÉTODO DE PAGAMENTO:</span>
-                <span className="font-black text-zinc-200">{pedidoDetalhado.pagamento.toUpperCase()}</span>
+
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Preço (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={novoPreco}
+                    onChange={(e) => setNovoPreco(e.target.value)}
+                    className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                {/* ✅ Botões de Disponibilidade */}
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Disponibilidade</label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setNovoDisponivel(true)}
+                      className={`flex-1 py-3 rounded-lg font-black uppercase transition-all ${
+                        novoDisponivel ? "bg-emerald-500 text-[#27272A]" : "bg-[#FFEDD5] text-[#71717A]"
+                      }`}
+                    >
+                      ✅ Disponível
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNovoDisponivel(false)}
+                      className={`flex-1 py-3 rounded-lg font-black uppercase transition-all ${
+                        !novoDisponivel ? "bg-red-500 text-[#27272A]" : "bg-[#FFEDD5] text-[#71717A]"
+                      }`}
+                    >
+                      ❌ Indisponível
+                    </button>
+                  </div>
+                </div>
               </div>
+
+              <button
+                onClick={salvarAlteracaoProduto}
+                className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black text-sm uppercase rounded-xl transition-all shadow-lg"
+              >
+                💾 Salvar Alterações
+              </button>
             </div>
-            
-            <div className="space-y-1.5 bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/60">
-              <span className="text-[9px] font-black text-zinc-500 block mb-1 tracking-wider text-center">PRODUTOS SOLICITADOS</span>
-              {Object.entries(pedidoDetalhado.itens || {}).map(([key, qtd]) => qtd > 0 && (
-                <div key={key} className="flex justify-between text-zinc-300 border-b border-zinc-900 pb-1">
-                  <span>{formatarNomeItem(key)}</span>
-                  <span className="font-black text-orange-400">{qtd}X</span>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* ================================================== */}
+    {/* ================= ABA: PEDIDOS =================== */}
+    {/* ================================================== */}
+    {abaAtiva === "pedidos" && (
+      <div className="space-y-6">
+        {/* 🗑️ REMOVIDO O BOTÃO VER DEMANDA AQUI */}
+
+        {/* 🟡 LISTA DE PEDIDOS EM ANDAMENTO - HORA DESTACADA 🟡 */}
+        <div className="bg-[#FFEDD5]/60 border border-orange-400/40 rounded-3xl p-8 shadow-2xl">
+          <h2 className="text-2xl font-black text-orange-700 uppercase tracking-wider mb-8 flex items-center gap-3">
+            <span>📋</span> Pedidos em Andamento ({pedidosAtivos.length})
+          </h2>
+
+          {pedidosAtivos.length === 0 ? (
+            <div className="text-center py-20 text-orange-800 font-bold uppercase text-lg">
+              🚀 Nenhum pedido no momento
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {pedidosAtivos.map((pedido) => (
+                <div 
+                  key={pedido.id} 
+                  className="bg-[#FFFBEB] border border-orange-400/50 rounded-3xl p-7 hover:border-orange-500 hover:scale-[1.01] transition-all shadow-lg"
+                >
+                  <div className="flex justify-between items-start mb-5">
+                    <div>
+                      <h3 className="font-black text-xl uppercase text-orange-900">{pedido.nome}</h3>
+                      {/* ⏱ HORA DESTACADA AQUI ⏱ */}
+                      <p className="text-orange-700 font-black text-base mt-1 bg-orange-200/50 px-3 py-1 rounded-lg inline-block">⏱ {pedido.horario}</p>
+                    </div>
+                    <span className={`px-4 py-2 rounded-xl text-sm font-black uppercase shadow-sm ${pedido.pagamento === "Pix" ? "bg-teal-400/30 text-teal-800 border border-teal-500/40" : "bg-amber-400/30 text-amber-800 border border-amber-500/40"}`}>
+                      {pedido.pagamento}
+                    </span>
+                  </div>
+
+                  <p className="text-orange-900/80 text-base mb-5 font-bold">{pedido.endereco}</p>
+                  
+                  {pedido.observacao && (
+                    <p className="bg-orange-500/20 border border-orange-500/40 text-orange-800 text-sm p-4 rounded-xl mb-5 font-bold">
+                      💡 Obs: {pedido.observacao}
+                    </p>
+                  )}
+
+                  <div className="border-t border-orange-300/40 pt-4 mb-5">
+                    <p className="text-sm font-black text-orange-700 uppercase mb-3">Itens:</p>
+                    <div className="space-y-2 pl-1">
+                      {Object.entries(pedido.itens).map(([key, qtd]) => qtd > 0 && (
+                        <div key={key} className="flex justify-between text-base">
+                          <span className="text-orange-900/80 font-bold">{formatarNomeItem(key)}</span>
+                          <span className="text-orange-600 font-black">{qtd}x</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2">
+                    <p className="text-2xl font-black text-emerald-600">R$ {pedido.valorTotal.toFixed(2)}</p>
+                    <button
+                      onClick={() => setPedidoSelecionadoParaConcluir(pedido)}
+                      className="px-6 py-3 bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-xl text-sm font-black uppercase hover:bg-emerald-500/30 transition-all shadow-md"
+                    >
+                      ✅ Concluir
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-
-            <div className="flex justify-between items-center bg-zinc-950 p-4 rounded-2xl border border-emerald-500/10">
-              <span className="text-[10px] font-bold text-zinc-400">VALOR TOTAL DO PEDIDO</span>
-              <p className="text-xl font-black text-emerald-400">R$ {pedidoDetalhado.valorTotal.toFixed(2)}</p>
-            </div>
-            <div className="pt-2 flex gap-2">
-              <button onClick={() => setPedidoDetalhado(null)} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold">FECHAR RESUMO</button>
-              <button onClick={() => { if(confirm("Deseja deletar este registro permanentemente?")) deletarDoHistorico(pedidoDetalhado.id) }} className="px-4 py-3 bg-red-950/40 text-red-400 border border-red-900/50 rounded-xl font-bold">🗑️</button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
+    )}
 
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* ================= TOPBAR ABAS ================= */}
-        <div className="flex flex-col gap-6 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl uppercase">
-          <div className="flex flex-row justify-between items-center w-full">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-500 tracking-tight">TAPICUZ ADMIN ☀️</h1>
-              <p className="text-[10px] sm:text-xs text-zinc-500 font-bold">PAINEL DE CONTROLE DE ENTRADAS</p>
-            </div>
-            <div className="flex items-center gap-3 bg-zinc-950/60 border border-zinc-800/80 py-2 px-4 rounded-2xl">
-              <span className={`text-[10px] font-black tracking-wider hidden sm:inline ${lojaAberta ? "text-emerald-400" : "text-zinc-500"}`}>
-                {lojaAberta ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
-              </span>
-              <button 
-                type="button"
-                onClick={alternarStatusLoja}
-                className={`w-12 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${lojaAberta ? "bg-emerald-500" : "bg-zinc-800"}`}
-              >
-                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-all duration-300 ${lojaAberta ? "translate-x-6" : "translate-x-0"}`} />
-              </button>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 w-full">
-            <button onClick={() => setAbaAtiva("pedidos")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-              <span className="text-lg">📋</span>
-              <span>Pedidos ({pedidosAtivos.length})</span>
-            </button>
-            <button onClick={() => setAbaAtiva("avulso")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-              <span className="text-lg">➕</span>
-              <span>LANÇAR AVULSO</span>
-            </button>
-            <button onClick={() => setAbaAtiva("pendencias")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "pendencias" ? "bg-red-900 text-white border-red-500 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-              <span className="text-lg">⏳</span>
-              <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
-            </button>
-            <button onClick={() => setAbaAtiva("historico")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-              <span className="text-lg">📜</span>
-              <span>VENDAS PAGAS ({pedidosPagos.length})</span>
-            </button>
-            <button onClick={() => setAbaAtiva("caixa")} className={`p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all ${abaAtiva === "caixa" ? "bg-orange-600 text-white border-orange-400 scale-[1.02]" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>
-              <span className="text-lg">💰</span>
-              <span>CAIXA GERAL</span>
-            </button>
-            <button onClick={() => setModalConfirmarZerarTudo(true)} className="p-4 rounded-2xl text-xs font-black uppercase border flex flex-col items-center justify-center gap-2 transition-all bg-zinc-950 border-red-800 text-red-500 hover:bg-red-950/20">
-              <span className="text-lg">🚨</span>
-              <span>ZERAR SISTEMA</span>
-            </button>
-          </div>
-        </div>
+    {/* ================================================== */}
+    {/* ================= ABA: LANÇAR AVULSO ============ */}
+    {/* ================================================== */}
+    {abaAtiva === "avulso" && (
+      <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+        <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6">
+          ➕ Lançar Pedido Avulso
+        </h2>
 
-        {/* ================= ABA: PEDIDOS ATIVOS ================= */}
-        {abaAtiva === "pedidos" && (
-          <div className="space-y-6 animate-fade-in uppercase">
-            {pedidosAtivos.length > 0 && (
-              <div className="max-w-xl mx-auto bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-xl text-center">
-                <button 
+        <form onSubmit={dispararFluxoConclusaoAvulso} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Dados do Cliente */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Nome do Cliente</label>
+                <input
+                  type="text"
+                  value={nomeAvulso}
+                  onChange={(e) => setNomeAvulso(e.target.value.toUpperCase())}
+                  className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Rua</label>
+                  <input
+                    type="text"
+                    value={ruaAvulso}
+                    onChange={(e) => setRuaAvulso(e.target.value.toUpperCase())}
+                    className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Número</label>
+                  <input
+                    type="text"
+                    value={numeroAvulso}
+                    onChange={(e) => setNumeroAvulso(e.target.value.toUpperCase())}
+                    className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Ponto de Referência</label>
+                <input
+                  type="text"
+                  value={referenciaAvulso}
+                  onChange={(e) => setReferenciaAvulso(e.target.value.toUpperCase())}
+                  className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Observação</label>
+                <textarea
+                  value={observacaoAvulso}
+                  onChange={(e) => setObservacaoAvulso(e.target.value.toUpperCase())}
+                  className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500 resize-none h-20"
+                />
+              </div>
+
+              {/* Horário */}
+              <div className="relative">
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Horário de Entrega</label>
+                <button
                   type="button"
-                  onClick={() => setMostrarDemandas(!mostrarDemandas)}
-                  className="w-full text-sm font-black text-orange-400 tracking-wider flex items-center justify-center gap-2 py-1"
+                  onClick={() => setMostrarDropdownHora(!mostrarDropdownHora)}
+                  className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-left text-[#27272A] font-bold flex justify-between items-center"
                 >
-                  👩‍🍳 INSUMOS PARA PREPARO IMEDIATO {mostrarDemandas ? "▲" : "▼"}
+                  {horarioAvulso} ⏱
                 </button>
-                {mostrarDemandas && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-4 border-t border-zinc-800 pt-4">
-                    {Object.entries(demandasProducao)
-                      .filter(([_, qtd]) => qtd > 0)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([item, qtd]) => (
-                        <div key={item} className="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-800/40 font-black">
-                          <span className="text-zinc-300 w-full text-center">{formatarNomeItem(item)}</span>
-                          <span className="text-lg font-black text-orange-400 bg-zinc-900/80 border border-zinc-800 px-3 py-0.5 rounded-lg">{qtd}</span>
-                        </div>
-                      ))}
+                {mostrarDropdownHora && (
+                  <div className="absolute z-10 mt-1 w-full bg-[#FFFAF5] border border-[#F3F4F6] rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                    {OPCOES_HORARIOS.map((hora) => (
+                      <button
+                        key={hora}
+                        type="button"
+                        onClick={() => {
+                          setHorarioAvulso(hora)
+                          setMostrarDropdownHora(false)
+                        }}
+                        className="w-full text-left p-2 hover:bg-orange-500/20 text-[#71717A] font-bold"
+                      >
+                        {hora}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
-            )}
 
-            {carregando ? (
-              <div className="text-center py-12 text-zinc-500 text-xs animate-pulse">SINCRONIZANDO BANCO...</div>
-            ) : pedidosAtivos.length === 0 ? (
-              <div className="text-center py-12 bg-zinc-900/40 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold">NENHUM PEDIDO ATIVO NO MOMENTO.</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {pedidosAtivos.map((pedido) => {
-                  const estaSendoConcluido = pedidoSelecionadoParaConcluir?.id === pedido.id
-                  return (
-                    <div 
-                      key={pedido.id} 
-                      className={`border text-zinc-100 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between transition-all duration-300 ${
-                        estaSendoConcluido 
-                          ? "bg-emerald-950 border-emerald-400 scale-[1.01] shadow-emerald-900/20" 
-                          : "bg-zinc-900 border-zinc-800"
-                      }`}
-                    >
-                      <div>
-                        <div className={`border rounded-2xl py-2 px-4 flex items-center justify-center ${estaSendoConcluido ? "bg-black/30 border-emerald-500/30" : "bg-black/50 border border-zinc-800"}`}>
-                          <span className={`text-lg font-black tracking-wider ${estaSendoConcluido ? "text-emerald-400 animate-pulse" : "text-orange-400"}`}>
-                            {estaSendoConcluido ? "✓ CONCLUINDO..." : `⏱️ ${pedido.horario}`}
-                          </span>
-                        </div>
-                        <div className={`border-b pb-2.5 text-center space-y-2 mt-2 uppercase ${estaSendoConcluido ? "border-emerald-800/40" : "border-zinc-800/60"}`}>
-                          <div>
-                            <span className={`text-[9px] font-bold block mb-0.5 ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>CLIENTE</span>
-                            <h3 className="font-black text-white text-base tracking-tight">{pedido.nome}</h3>
-                          </div>
-                          <div className="flex flex-col items-center justify-center gap-1">
-                            <span className={`text-[9px] font-bold block ${estaSendoConcluido ? "text-emerald-400/70" : "text-zinc-500"}`}>LOGRADOURO</span>
-                            <span className={`text-xs font-black tracking-wide py-1.5 px-3 rounded-xl border inline-block text-center max-w-full truncate ${
-                              estaSendoConcluido 
-                                ? "text-emerald-300 bg-emerald-400/5 border-emerald-500/20" 
-                                : "text-yellow-400 bg-yellow-400/5 border-yellow-400/10"
-                            }`}>
-                              📍 {pedido.endereco}
-                            </span>
-                          </div>
-                          {pedido.observacao && (
-                            <div className={`border rounded-xl p-3 text-center ${estaSendoConcluido ? "bg-emerald-900/30 border-emerald-500/20" : "bg-orange-500/10 border border-orange-500/20"}`}>
-                              <p className={`text-[10px] font-black mb-1 ${estaSendoConcluido ? "text-emerald-400" : "text-orange-400"}`}>REQUISITO</p>
-                              <p className="text-xs text-zinc-200 font-black">{pedido.observacao}</p>
-                            </div>
-                          )}
-                        </div>
-                        <div className={`p-3 rounded-xl border text-xs text-center mt-3 ${estaSendoConcluido ? "bg-black/10 border-emerald-800/30" : "bg-black/20 border border-zinc-800/60"}`}>
-                          <span className={`text-[9px] font-bold block mb-1 uppercase ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-500"}`}>COMPOSIÇÃO</span>
-                          {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
-                            <div key={key} className="flex justify-center items-center text-zinc-100 font-black">
-                              <span><strong className={`${estaSendoConcluido ? "text-emerald-400" : "text-amber-300"} mr-1`}>{qtd}X</strong> {formatarNomeItem(key)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className={`p-3 rounded-xl border flex justify-between items-center text-xs mt-3 uppercase ${estaSendoConcluido ? "bg-black/20 border-emerald-800/40" : "bg-black/40 border border-zinc-800"}`}>
-                          <div>
-                            <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>ESCOLHA</span>
-                            <span className="font-black text-zinc-200 text-[11px]">{pedido.pagamento}</span>
-                            {pedido.pagamento === "Dinheiro" && pedido.troco > 0 && (
-                              <span className="font-black text-red-400 block mt-0.5 text-xs">TROCO: R$ {pedido.troco.toFixed(2)}</span>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <span className={`font-bold text-[9px] block ${estaSendoConcluido ? "text-emerald-400/60" : "text-zinc-400"}`}>SUBTOTAL</span>
-                            <span className={`text-base font-black ${estaSendoConcluido ? "text-emerald-300" : "text-emerald-400"}`}>R$ {pedido.valorTotal.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="pt-3">
-                        <button 
-                          onClick={() => setPedidoSelecionadoParaConcluir(pedido)} 
-                          className={`w-full py-3.5 rounded-xl font-black text-xs text-white tracking-widest uppercase shadow-md transition-all ${
-                            estaSendoConcluido 
-                              ? "bg-emerald-500 hover:bg-emerald-600 animate-pulse" 
-                              : "bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-95"
-                          }`}
-                        >
-                          {estaSendoConcluido ? "✓ DEFINIR DESTINO" : "➡️ Concluir"}
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
+              {/* Pagamento */}
+              <div>
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Forma de Pagamento</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPagamentoAvulso("Pix")}
+                    className={`p-3 rounded-xl font-black uppercase border transition-all ${pagamentoAvulso === "Pix" ? "bg-teal-500/20 text-teal-400 border-teal-500/30" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+                  >
+                    💳 Pix
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPagamentoAvulso("Dinheiro")}
+                    className={`p-3 rounded-xl font-black uppercase border transition-all ${pagamentoAvulso === "Dinheiro" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+                  >
+                    💵 Dinheiro
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* ================= ABA: PENDÊNCIAS ================= */}
-        {abaAtiva === "pendencias" && (
-          <div className="space-y-6 animate-fade-in uppercase">
-            <div className="text-center bg-zinc-900 border-2 border-red-900/30 rounded-3xl p-6 shadow-xl max-w-lg mx-auto">
-              <span className="text-2xl">⏳</span>
-              <h2 className="text-sm font-black text-red-400 tracking-widest mt-1">SALA DE AGUARDO DE TRANSFERÊNCIAS</h2>
-              <p className="text-zinc-400 text-[11px] mt-1 font-medium">PEDIDOS ENTREGUES MAS COM RECEBIMENTO NÃO CONFIRMADO NO BANCO.</p>
+              {pagamentoAvulso === "Dinheiro" && (
+                <div>
+                  <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Troco para Quanto?</label>
+                  <input
+                    type="text"
+                    value={trocoParaAvulso}
+                    onChange={(e) => setTrocoParaAvulso(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              )}
             </div>
-            {pedidosPendentes.length === 0 ? (
-              <div className="text-center py-12 bg-zinc-900/30 border border-zinc-800 border-dashed rounded-3xl text-zinc-500 text-xs font-bold tracking-wide">
-                NENHUMA PENDÊNCIA REGISTRADA NO MOMENTO.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {pedidosPendentes.map((pedido) => (
-                  <div key={pedido.id} className="border bg-zinc-900 border-red-950/40 text-zinc-100 rounded-3xl p-5 shadow-xl flex flex-col justify-between">
-                    
-                    <div className="bg-black/30 border border-zinc-800/60 rounded-2xl p-4 space-y-3.5 text-center">
-                      <div className="border-t border-b border-zinc-800/60 pb-2">
-                        <span className="text-red-400 font-black text-xs tracking-widest block animate-pulse">⚠️ AGUARDANDO PAGAMENTO</span>
-                        <span className="font-mono text-[10px] font-black text-zinc-500 mt-0.5 block">HORÁRIO DE ENVIO: {pedido.horario}</span>
-                      </div>
-                      
-                      <div>
-                        <span className="text-[11px] font-black text-zinc-400 tracking-widest block mb-0.5">⚠️ CLIENTE ⚠️</span>
-                        <h4 className="font-black text-white text-base tracking-wide">{pedido.nome}</h4>
-                        <span className="text-[11px] text-amber-400 block font-semibold mt-1">📍 ENTREGA: {pedido.endereco}</span>
-                      </div>
-                      
-                      <div className="border-t border-b border-zinc-800/40 py-2.5 text-xs text-zinc-300 font-bold space-y-0.5">
-                        <span className="text-[9px] font-black text-zinc-500 block mb-1">PRODUTOS DO CLIENTE</span>
-                        {Object.entries(pedido.itens || {}).map(([key, qtd]) => qtd > 0 && (
-                          <div key={key}>• {qtd}x {formatarNomeItem(key)}</div>
-                        ))}
-                      </div>
-                      
-                      <div className="pt-1">
-                        <span className="text-zinc-500 font-black text-[9px] tracking-wider block mb-0.5">MÉTODO PROPOSTO: {pedido.pagamento.toUpperCase()}</span>
-                        <p className="text-[10px] font-bold text-zinc-400">VALOR DEVEDOR TOTAL:</p>
-                        <span className="font-black text-red-500 text-xl tracking-tight">R$ {pedido.valorTotal.toFixed(2)}</span>
-                      </div>
-                    </div>
 
-                    <div className="space-y-2 pt-4">
-                      <button onClick={() => marcarComoPago(pedido.id)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-xs uppercase transition-all shadow-md">💰 Confirmar Pagamento</button>
-                      <button onClick={() => enviarMensagemNotificacaoWhats(pedido.nome)} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-xl font-bold text-[11px] uppercase transition-all border border-zinc-700">📱 Avisar Cliente</button>
+            {/* Seleção de Produtos ✅ ITENS SELECIONADOS COM COR ✅ */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-black text-orange-400 uppercase tracking-wider">Produtos</h3>
+              
+              {produtos.map((produto) => {
+                const quantidade = (itensAvulsos as any)[produto.chave] || 0;
+                const selecionado = quantidade > 0; // Se tem quantidade > 0, fica destacado
+                return (
+                <div 
+                  key={produto.id} 
+                  className={`flex items-center justify-between border rounded-xl p-4 transition-all ${
+                    produto.disponivel !== false 
+                      ? (selecionado ? "bg-amber-100/70 border-amber-400 shadow-md" : "bg-[#FFFFFF] border-[#F3F4F6]") 
+                      : "border-red-800/40 opacity-40 grayscale bg-[#FFFFFF]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{produto.icone}</span>
+                    <div>
+                      <p className={`font-bold ${produto.disponivel !== false ? "text-[#27272A]" : "text-[#71717A] line-through"}`}>
+                        {produto.nome}
+                        {selecionado && <span className="text-orange-600 font-black text-sm ml-2">✅ SELECIONADO</span>}
+                      </p>
+                      <p className={`text-xs font-mono ${produto.disponivel !== false ? "text-emerald-400" : "text-zinc-600"}`}>
+                        R$ {produto.preco.toFixed(2)}
+                      </p>
+                      {produto.disponivel === false && (
+                        <span className="text-[10px] font-black text-red-400 uppercase mt-1 block">❌ Indisponível</span>
+                      )}
                     </div>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => alterarQtdAvulso(produto.chave, -1)}
+                      disabled={produto.disponivel === false}
+                      className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      −
+                    </button>
+                    <span className="w-10 text-center font-black text-lg">
+                      {quantidade}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => alterarQtdAvulso(produto.chave, 1)}
+                      disabled={produto.disponivel === false}
+                      className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )})}
+
+              {/* Total e Ações */}
+              <div className="mt-6 p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-sm font-black text-[#71717A] uppercase">Valor Total</span>
+                  <span className="text-2xl font-black text-emerald-400">R$ {valorTotalAvulso}</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={executarCopiaResumo}
+                    className="py-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl font-black text-xs uppercase hover:bg-blue-500/20 transition-all"
+                  >
+                    📋 Copiar Resumo
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!lojaAberta || valorTotalAvulsoNumerico === 0}
+                    className="py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ⚡ Finalizar Pedido
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+          </div>
+        </form>
+      </div>
+    )}
+
+    {/* ================================================== */}
+    {/* ================= ABA: PENDÊNCIAS =============== */}
+    {/* ================================================== */}
+    {abaAtiva === "pendencias" && (
+      <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+        <h2 className="text-lg font-black text-red-400 uppercase tracking-wider mb-6">
+          ⏳ Pedidos Pendentes de Pagamento ({pedidosPendentes.length})
+        </h2>
+
+        {pedidosPendentes.length === 0 ? (
+          <div className="text-center py-12 text-zinc-500 font-bold uppercase">
+            ✅ Nenhuma pendência no momento
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pedidosPendentes.map((pedido) => (
+              <div 
+                key={pedido.id} 
+                className="bg-[#FFFFFF] border border-red-500/30 rounded-2xl p-5"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-black text-lg uppercase text-[#27272A]">{pedido.nome}</h3>
+                    <p className="text-amber-400 text-xs font-bold">⏱ {pedido.horario}</p>
+                  </div>
+                  <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-red-500/10 text-red-400 border border-red-500/20">
+                    NÃO PAGO
+                  </span>
+                </div>
+
+                <p className="text-[#71717A] text-sm mb-3 font-bold">{pedido.endereco}</p>
+
+                <div className="flex justify-between items-center mt-4">
+                  <p className="text-lg font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => enviarMensagemNotificacaoWhats(pedido.nome)}
+                      className="px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
+                    >
+                      📲 Avisar
+                    </button>
+                    <button
+                      onClick={() => marcarComoPago(pedido.id)}
+                      className="px-3 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-black uppercase hover:bg-emerald-500/20 transition-all"
+                    >
+                      ✅ Marcar Pago
+                    </button>
+                    <button
+                      onClick={() => setPedidoDetalhado(pedido)}
+                      className="px-3 py-2 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg text-xs font-black uppercase"
+                    >
+                      👁️
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
+      </div>
+    )}
 
-        {/* ================= ABA: HISTÓRICO DE PEDIDOS PAGOS ================= */}
-        {abaAtiva === "historico" && (
-          <div className="space-y-6 animate-fade-in uppercase">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl text-xs">
-              <h2 className="text-sm font-black text-emerald-400 tracking-wider border-b border-zinc-800 pb-2 text-center">HISTÓRICO DE PEDIDOS PAGOS</h2>
-              {pedidosPagos.length === 0 ? (
-                <div className="text-center py-6 text-zinc-500 font-bold">NENHUM FLUXO TOTALIZADO NESTE TURNO AINDA.</div>
+    {/* ================================================== */}
+    {/* 🆕 ABA: DEMANDAS - SÓ FUNCIONAL, SEM ALTERAÇÃO VISUAL 🆕 */}
+    {/* ================================================== */}
+    {abaAtiva === "demandas" && (
+      <div className="bg-[#FFFAF5] border border-amber-500/30 rounded-3xl p-6 shadow-xl">
+        <div className="mb-6">
+          <h2 className="text-lg font-black text-amber-600 uppercase tracking-wider flex items-center gap-2">
+            <span>📋</span> Demanda de Produção - Total Geral
+          </h2>
+          <p className="text-zinc-500 text-xs mt-1">Quantidade total de itens necessários para produzir todos os pedidos em aberto.</p>
+        </div>
+
+        {Object.keys(demandasProducao).length === 0 || Object.values(demandasProducao).every(q => q === 0) ? (
+          <div className="text-center py-16 text-zinc-500 font-bold uppercase">
+            ✅ Nenhuma demanda no momento
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+            {Object.entries(demandasProducao)
+              .sort((a, b) => b[1] - a[1])
+              .map(([key, qtd]) => qtd > 0 && (
+              <div key={key} className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#F3F4F6] text-center shadow-md">
+                <p className="text-4xl font-black text-orange-500 mb-2">{qtd}</p>
+                <p className="text-sm font-bold text-[#71717A] uppercase">{formatarNomeItem(key)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* ================================================== */}
+    {/* 🆕 ABA: RANKING 🆕 */}
+    {/* ================================================== */}
+    {abaAtiva === "ranking" && (
+      <div className="bg-[#FFFAF5] border border-orange-500/30 rounded-3xl p-6 shadow-xl">
+        <div className="mb-6">
+          <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider flex items-center gap-2">
+            <span>📈</span> Ranking de Produtos Mais Vendidos
+          </h2>
+          <p className="text-zinc-500 text-xs mt-1">Classificação em tempo real por quantidade vendida e faturamento.</p>
+        </div>
+
+        {(() => {
+          const todosPedidos = [...pedidosPagos, ...pedidosPendentes, ...pedidosAtivos];
+          const dadosRanking: { [key: string]: { nome: string; icone: string; qtd: number; valor: number } } = {};
+
+          produtos.forEach(prod => {
+            dadosRanking[prod.chave] = { nome: prod.nome, icone: prod.icone, qtd: 0, valor: 0 };
+          });
+
+          todosPedidos.forEach(ped => {
+            Object.entries(ped.itens).forEach(([chave, qtd]) => {
+              if(dadosRanking[chave]) {
+                dadosRanking[chave].qtd += Number(qtd);
+                dadosRanking[chave].valor += Number(qtd) * produtos.find(p => p.chave === chave)?.preco || 0;
+              }
+            });
+          });
+
+          const rankingArray = Object.values(dadosRanking).sort((a,b) => b.qtd - a.qtd);
+
+          return (
+            <>
+              {rankingArray.every(item => item.qtd === 0) ? (
+                <div className="text-center py-16 text-zinc-500 font-bold uppercase">
+                  📉 Nenhuma venda registrada ainda
+                </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 font-bold">
-                        <th className="pb-2">NOME DO CLIENTE</th>
-                        <th className="pb-2">VALOR</th>
-                        <th className="pb-2 text-center">VER RESUMO</th>
+                      <tr className="border-b border-[#F3F4F6]">
+                        <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Posição</th>
+                        <th className="p-3 text-xs font-black text-[#71717A] uppercase">Produto</th>
+                        <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Quantidade</th>
+                        <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Total Faturado</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {pedidosPagos.map((pedido) => (
-                        <tr key={pedido.id} className="border-b border-zinc-800/30 hover:bg-zinc-950/20">
-                          <td className="py-3 font-black text-zinc-200">{pedido.nome}</td>
-                          <td className="py-3 font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</td>
-                          <td className="py-3 text-center">
-                            <button 
-                              onClick={() => setPedidoDetalhado(pedido)} 
-                              className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-black px-4 py-1.5 rounded-xl text-[11px] border border-zinc-700/60 transition-all"
-                            >
-                              👁️ DETALHES
-                            </button>
+                    <tbody className="divide-y divide-zinc-800/50">
+                      {rankingArray.map((item, index) => (
+                        <tr key={index} className={`hover:bg-[#FFEDD5]/30 transition-colors ${index < 3 ? "font-black" : ""}`}>
+                          <td className="p-4 text-center">
+                            {index === 0 && "🥇"}
+                            {index === 1 && "🥈"}
+                            {index === 2 && "🥉"}
+                            {index > 2 && <span className="font-bold text-lg text-[#71717A]">#{index+1}</span>}
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{item.icone}</span>
+                              <span className="font-bold text-lg">{item.nome}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="font-black text-xl text-orange-400">{item.qtd}</span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <span className="font-black text-lg text-emerald-400">R$ {item.valor.toFixed(2)}</span>
                           </td>
                         </tr>
                       ))}
@@ -944,345 +1536,252 @@ export default function AdminPainel() {
                   </table>
                 </div>
               )}
-            </div>
+            </>
+          )
+        })()}
+      </div>
+    )}
+
+    {/* ================================================== */}
+    {/* ================= ABA: VENDAS PAGAS ============= */}
+    {/* ================================================== */}
+    {abaAtiva === "historico" && (
+      <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+        <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6">
+          📜 Histórico de Vendas Pagas ({pedidosPagos.length})
+        </h2>
+
+        {pedidosPagos.length === 0 ? (
+          <div className="text-center py-12 text-zinc-500 font-bold uppercase">
+            📭 Nenhuma venda registrada
           </div>
-        )}
-
-        {/* ================= CAIXA GERAL ================= */}
-        {abaAtiva === "caixa" && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-fade-in uppercase">
-            
-            <div className="space-y-3">
-              <h3 className="text-xs font-black text-orange-400 tracking-widest pl-2">📊 MOVIMENTAÇÃO DO TURNO ATUAL</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl space-y-1 shadow-xl">
-                  <span className="text-[10px] font-bold text-zinc-500 tracking-widest block">PIX LIQUIDADO</span>
-                  <p className="text-lg font-black text-teal-400">R$ {totalPix.toFixed(2)}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl space-y-1 shadow-xl">
-                  <span className="text-[10px] font-bold text-zinc-500 tracking-widest block">DINHEIRO</span>
-                  <p className="text-lg font-black text-amber-500">R$ {totalDinheiro.toFixed(2)}</p>
-                </div>
-                <div className="bg-zinc-900 border border-red-900/30 p-5 rounded-3xl space-y-1 shadow-xl">
-                  <span className="text-[10px] font-bold text-red-400 tracking-widest block">DESPESAS</span>
-                  <p className="text-lg font-black text-red-400">R$ {totalDespesasAcumuladas.toFixed(2)}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl space-y-1 shadow-xl bg-gradient-to-b from-zinc-900 to-zinc-950">
-                  <span className="text-[10px] font-bold text-zinc-400 tracking-widest block">SALDO LÍQUIDO</span>
-                  <p className="text-lg font-black text-white">R$ {saldoLiquidoAtual.toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch pt-2">
-              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl shadow-xl flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xs font-black text-red-400 tracking-wider mb-2">💸 LANÇAR DESPESA / RETIRADA</h3>
-                </div>
-                <form onSubmit={lancarDespesaSimples} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="VALOR R$ (EX: 15.50)" 
-                    value={valorDespesaInput}
-                    onChange={(e) => setValorDespesaInput(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-red-500 rounded-xl p-3 text-xs text-white outline-none text-center font-bold" 
-                  />
-                  <button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-black px-6 rounded-xl text-xs tracking-wider transition-all">LANÇAR</button>
-                </form>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl shadow-xl flex flex-col justify-center items-center text-center space-y-3">
-                <button type="button" onClick={() => setModalConfirmarTurno(true)} className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs tracking-widest rounded-xl shadow-md">
-                  💾 SALVAR & ARQUIVAR TURNO COMPLETO
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-6 border-t border-zinc-900">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-1">
-                <h3 className="text-xs font-black text-emerald-400 tracking-widest">🗄️ HISTÓRICO DE TURNOS ARQUIVADOS</h3>
-                <span className="text-[10px] text-zinc-500 font-bold">REGISTROS ANTERIORES NO BANCO</span>
-              </div>
-
-              <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-5 text-center shadow-xl space-y-3">
-                <span className="text-[10px] font-black text-emerald-400 tracking-widest block">💰 SOMA TOTAL ACUMULADA DE RESUMOS</span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs uppercase">
-                  <div className="bg-black/40 p-2.5 rounded-xl border border-zinc-800/60">
-                    <span className="text-[8px] text-zinc-500 block font-bold">TOTAL PIX</span>
-                    <span className="font-black text-teal-400 text-xs">R$ {somaHistoricoPix.toFixed(2)}</span>
-                  </div>
-                  <div className="bg-black/40 p-2.5 rounded-xl border border-zinc-800/60">
-                    <span className="text-[8px] text-zinc-500 block font-bold">TOTAL DINHEIRO</span>
-                    <span className="font-black text-amber-500 text-xs">R$ {somaHistoricoDinheiro.toFixed(2)}</span>
-                  </div>
-                  <div className="bg-black/40 p-2.5 rounded-xl border border-zinc-800/60">
-                    <span className="text-[8px] text-zinc-500 block font-bold">TOTAL DESPESAS</span>
-                    <span className="font-black text-red-400 text-xs">R$ {somaHistoricoDespesas.toFixed(2)}</span>
-                  </div>
-                  <div className="bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-900/30">
-                    <span className="text-[8px] text-emerald-400/70 block font-bold">LÍQUIDO GERAL</span>
-                    <span className="font-black text-emerald-400 text-sm">R$ {somaHistoricoLiquido.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {historicoCaixas.length === 0 ? (
-                <div className="text-center py-8 bg-zinc-900/20 border border-zinc-900 border-dashed rounded-2xl text-zinc-600 text-xs font-bold tracking-wide">
-                  NENHUM FECHAMENTO SALVO NO BANCO AINDA.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {historicoCaixas.map((caixa) => (
-                    <div key={caixa.id} className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-4 space-y-3 shadow-md text-xs">
-                      <div className="flex justify-between items-center border-b border-zinc-800/80 pb-2">
-                        <span className="font-black text-zinc-200">🗂️ TURNO SALVO</span>
-                        <span className="font-mono text-[10px] font-black text-amber-400">⏱️ {caixa.data}</span>
-                      </div>
-                      <div className="space-y-1 text-zinc-400 font-medium">
-                        <div className="flex justify-between"><span>TOTAL PIX:</span><span className="font-bold text-teal-400">R$ {(caixa.totalPix || 0).toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span>DINHEIRO:</span><span className="font-bold text-amber-500">R$ {(caixa.totalDinheiro || 0).toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span>DESPESAS:</span><span className="font-bold text-red-400">R$ {(caixa.despesas || 0).toFixed(2)}</span></div>
-                        <div className="flex justify-between border-t border-zinc-800/60 pt-1.5 font-black text-white mt-1">
-                          <span>SALDO LÍQUIDO:</span>
-                          <span className="text-emerald-400">R$ {(caixa.saldoLiquido || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {/* ================= ABA: REGISTRO DE PEDIDO AVULSO ================= */}
-        {abaAtiva === "avulso" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start max-w-5xl mx-auto animate-fade-in">
-            
-            <div className="bg-zinc-900 border-2 border-zinc-800/80 rounded-[2rem] p-6 space-y-6 shadow-xl relative text-center uppercase">
-              {!lojaAberta && (
-                <div className="absolute inset-0 bg-zinc-950/95 backdrop-blur-sm rounded-[2rem] z-40 flex flex-col items-center justify-center p-6 text-center space-y-2">
-                  <span className="text-3xl">🔒</span>
-                  <h3 className="font-black text-red-400 text-sm">SISTEMA APENAS PARA LEITURA</h3>
-                </div>
-              )}
-              <div className="space-y-1">
-                <h2 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400 tracking-wider">REGISTRAR PEDIDO BALCÃO</h2>
-                <p className="text-zinc-500 text-[10px] font-bold">PREENCHIMENTO DE CADASTRO</p>
-              </div>
-
-              <form onSubmit={dispararFluxoConclusaoAvulso} className="space-y-5 text-center">
-                <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 space-y-1">
-                  <label className="text-[9px] font-black text-orange-400 block tracking-widest">NOME DO CLIENTE</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="EX: JOÃO SILVA" 
-                    value={nomeAvulso} 
-                    onChange={(e) => setNomeAvulso(e.target.value)} 
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-2.5 text-xs text-white outline-none text-center font-black" 
-                  />
-                </div>
-
-                <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 space-y-3">
-                  <span className="text-[10px] font-black text-zinc-400 tracking-wider block">DADOS DO COMPLEMENTO DE ROTA</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-zinc-900 p-2.5 rounded-xl border border-zinc-800 text-center col-span-2">
-                      <label className="text-[8px] font-black text-orange-400 block tracking-wider mb-1">RUA OU AVENIDA</label>
-                      <input 
-                        type="text" 
-                        placeholder="NOME DA RUA" 
-                        value={ruaAvulso}
-                        onChange={(e) => setRuaAvulso(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-[11px] text-white font-black text-center outline-none"
-                      />
-                    </div>
-                    <div className="bg-zinc-900 p-2.5 rounded-xl border border-zinc-800 text-center">
-                      <label className="text-[8px] font-black text-orange-400 block tracking-wider mb-1">NÚMERO</label>
-                      <input 
-                        type="text" 
-                        placeholder="100" 
-                        value={numeroAvulso}
-                        onChange={(e) => setNumeroAvulso(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-[11px] text-white font-black text-center outline-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="bg-zinc-900 p-2.5 rounded-xl border border-zinc-800 text-center">
-                    <label className="text-[8px] font-black text-orange-400 block tracking-wider mb-1">PONTO DE REFERÊNCIA</label>
-                    <input 
-                      type="text" 
-                      placeholder="EX: PRÓXIMO À FARMÁCIA" 
-                      value={referenciaAvulso}
-                      onChange={(e) => setReferenciaAvulso(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-[11px] text-white font-black text-center outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 space-y-1">
-                  <label className="text-[9px] font-black text-orange-400 block tracking-widest">DIRETRIZES DA SOLICITAÇÃO</label>
-                  <input 
-                    type="text" 
-                    placeholder="EX: SEM AÇÚCAR, BEM QUENTE" 
-                    value={observacaoAvulso} 
-                    onChange={(e) => setObservacaoAvulso(e.target.value)} 
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-2.5 text-xs text-white outline-none text-center font-black" 
-                  />
-                </div>
-
-                <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-center relative">
-                  <label className="text-[10px] font-black text-orange-400 block tracking-widest mb-2">HORA</label>
-                  <button
-                    type="button"
-                    onClick={() => setMostrarDropdownHora(!mostrarDropdownHora)}
-                    className="w-full bg-zinc-900 border border-zinc-800 text-white font-black py-3 px-4 rounded-xl text-xs flex justify-between items-center transition-all"
-                  >
-                    <span className="w-full text-center">⏱️ DEFINIDO: {horarioAvulso}</span>
-                    <span>{mostrarDropdownHora ? "▲" : "▼"}</span>
-                  </button>
-                  {mostrarDropdownHora && (
-                    <div className="absolute left-0 right-0 mt-2 bg-zinc-900 border-2 border-zinc-800 rounded-xl p-3 z-50 grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto shadow-2xl animate-fade-in">
-                      {OPCOES_HORARIOS.map((hora) => (
-                        <button
-                          key={hora}
-                          type="button"
-                          onClick={() => {
-                            setHorarioAvulso(hora)
-                            setMostrarDropdownHora(false)
-                          }}
-                          className={`py-2 text-[11px] font-black rounded-lg transition-all border text-center ${horarioAvulso === hora ? "bg-orange-500 text-white border-orange-400" : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:bg-zinc-800"}`}
-                        >
-                          {hora}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2 bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-center">
-                  <span className="text-[10px] font-black text-zinc-400 tracking-wider block mb-2">QUANTIDADES DOS PRODUTOS</span>
-                  {Object.keys(itensAvulsos).map((itemKey) => (
-                    <div key={itemKey} className="flex items-center justify-between bg-zinc-900 p-2.5 rounded-xl text-xs border border-zinc-800/40">
-                      <span className="font-black text-zinc-200">{formatarNomeItem(itemKey)}</span>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => alterarQtdAvulso(itemKey, -1)} className="w-7 h-7 bg-zinc-950 rounded-lg border border-zinc-800 text-zinc-300 font-black flex items-center justify-center text-sm">-</button>
-                        <span className="font-black text-white w-5 text-center text-xs">{(itensAvulsos as any)[itemKey]}</span>
-                        <button type="button" onClick={() => alterarQtdAvulso(itemKey, 1)} className="w-7 h-7 bg-zinc-950 rounded-lg border border-zinc-800 text-zinc-300 font-black flex items-center justify-center text-sm">+</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 space-y-3">
-                  <label className="text-[10px] font-black text-orange-400 block tracking-widest">FORMA DE PAGAMENTO</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setPagamentoAvulso("Pix")}
-                      className={`py-3.5 rounded-xl font-black text-xs transition-all tracking-wider ${
-                        pagamentoAvulso === "Pix"
-                          ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-[1.02]"
-                          : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      📱 PIX
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPagamentoAvulso("Dinheiro")}
-                      className={`py-3.5 rounded-xl font-black text-xs transition-all tracking-wider ${
-                        pagamentoAvulso === "Dinheiro"
-                          ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20 scale-[1.02]"
-                          : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      💵 DINHEIRO
-                    </button>
-                  </div>
-                </div>
-
-                {pagamentoAvulso === "Dinheiro" && (
-                  <div className="p-4 bg-zinc-950 rounded-2xl border-2 border-orange-500/20 animate-fade-in text-xs space-y-2">
-                    <label className="text-[10px] font-black text-orange-400 block tracking-wider">CÉDULA OFERTADA PELO CONSUMIDOR</label>
-                    <input 
-                      type="text" 
-                      placeholder="EX: 50.00" 
-                      value={trocoParaAvulso} 
-                      onChange={(e) => setTrocoParaAvulso(e.target.value)} 
-                      className="w-full bg-zinc-900 border border-zinc-800 focus:border-orange-500 rounded-xl p-3 text-xs text-white font-black text-center outline-none" 
-                    />
-                  </div>
-                )}
-              </form>
-            </div>
-
-            <div className="bg-zinc-900 border-2 border-zinc-800 rounded-[2rem] p-6 space-y-4 sticky top-4 text-center uppercase">
-              <h2 className="text-sm font-black text-orange-400 tracking-widest border-b border-zinc-800 pb-3">🔎 CONFERÊNCIA DO PEDIDO</h2>
-              
-              <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-xs space-y-2 text-center">
-                <p className="text-zinc-300 font-bold text-sm tracking-wide"><span className="text-zinc-500 block text-[9px] uppercase tracking-widest font-black mb-0.5">Cliente:</span> {nomeAvulso || "NÃO INFORMADO"}</p>
-                <p className="text-zinc-300 font-bold text-sm tracking-wide"><span className="text-zinc-500 block text-[9px] uppercase tracking-widest font-black mb-0.5">Horário:</span> ⏱️ {horarioAvulso}</p>
-                <p className="text-zinc-300 font-bold text-sm tracking-wide"><span className="text-zinc-500 block text-[9px] uppercase tracking-widest font-black mb-0.5">Forma de Pagamento:</span> {pagamentoAvulso.toUpperCase()}</p>
-                
-                {pagamentoAvulso === "Dinheiro" && (
-                  <p className="text-orange-400 font-black text-sm tracking-wide">
-                    <span className="text-zinc-500 block text-[9px] uppercase tracking-widest font-black mb-0.5">Troco:</span> 
-                    R$ {trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado.toFixed(2) : "0.00"}
-                  </p>
-                )}
-              </div>
-
-              <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-xs space-y-1.5 text-center">
-                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Composição do Pedido</span>
-                {Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).length === 0 ? (
-                  <p className="text-zinc-600 font-bold italic py-2">NENHUM ITEM ADICIONADO ATÉ O MOMENTO</p>
-                ) : (
-                  Object.entries(itensAvulsos).map(([key, qtd]) => qtd > 0 && (
-                    <div key={key} className="text-zinc-200 font-black text-sm py-0.5">
-                      • {formatarNomeItem(key)} <span className="text-orange-400">({qtd}X)</span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-center items-center space-y-1">
-                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Total Líquido</span>
-                <p className="text-3xl font-black text-emerald-400 tracking-tight">R$ {valorTotalAvulso}</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={executarCopiaResumo}
-                className="w-full py-3.5 mt-3 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 rounded-xl font-black text-xs uppercase transition-all tracking-wider flex items-center justify-center gap-2 shadow-sm"
-              >
-                📋 Copiar Resumo
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const texto = encodeURIComponent(gerarResumoPedidoWhatsApp())
-                  window.open(`https://wa.me/?text=${texto}`, "_blank")
-                }}
-                className="w-full py-3.5 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase transition-all tracking-wider flex items-center justify-center gap-2"
-              >
-                📱 Abrir WhatsApp
-              </button>
-
-              <button 
-                onClick={dispararFluxoConclusaoAvulso} 
-                disabled={valorTotalAvulsoNumerico === 0 || !nomeAvulso.trim() || !lojaAberta} 
-                className="w-full px-6 py-4 mt-2 rounded-xl font-black bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-95 text-xs tracking-widest transition-all shadow-lg disabled:opacity-40 uppercase flex items-center justify-center gap-1"
-              >
-                ➡️ Concluir Pedido
-              </button>
-            </div>
-
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-[#F3F4F6]">
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase">Cliente</th>
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase">Horário</th>
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase">Pagamento</th>
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase">Valor</th>
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase">Status</th>
+                  <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50">
+                {pedidosPagos.map((pedido) => (
+                  <tr key={pedido.id} className="hover:bg-[#FFEDD5]/30 transition-colors">
+                    <td className="p-3 font-bold">{pedido.nome}</td>
+                    <td className="p-3 text-amber-400 font-bold">{pedido.horario}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded text-xs font-black uppercase ${pedido.pagamento === "Pix" ? "bg-teal-500/10 text-teal-400" : "bg-amber-500/10 text-amber-400"}`}>
+                        {pedido.pagamento}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono font-bold text-emerald-400">R$ {pedido.valor.toFixed(2)}</td>
+                    <td className="p-3">
+                      <span className={`text-xs font-black uppercase px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400`}>
+                        Concluído
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => setPedidoDetalhado(pedido)}
+                        className="px-3 py-1.5 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg text-xs font-black uppercase"
+                      >
+                        Detalhes
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
-    </main>
-  )
+    )}
+{/* ================================================== */}
+{/* ================= ABA: CAIXA GERAL =============== */}
+{/* ================================================== */}
+{abaAtiva === "caixa" && (
+  <div className="space-y-6">
+    {/* Resumo do Turno ATUAL (o que está aberto agora) */}
+    <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+      <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6">
+        💰 Resumo do Turno Atual
+      </h2>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-[#FFFFFF] border border-[#F3F4F6] rounded-2xl p-5 text-center">
+          <p className="text-xs font-black text-zinc-500 uppercase mb-1">Total Faturado</p>
+          <p className="text-2xl font-black text-emerald-600">R$ {faturamentoTotal.toFixed(2)}</p>
+        </div>
+        <div className="bg-[#FFFFFF] border border-[#F3F4F6] rounded-2xl p-5 text-center">
+          <p className="text-xs font-black text-zinc-500 uppercase mb-1">Despesas</p>
+          <p className="text-2xl font-black text-red-500">R$ {totalDespesasAcumuladas.toFixed(2)}</p>
+        </div>
+        <div className="bg-[#FFFFFF] border border-[#F3F4F6] rounded-2xl p-5 text-center">
+          <p className="text-xs font-black text-zinc-500 uppercase mb-1">Saldo Líquido</p>
+          <p className="text-2xl font-black text-orange-500">R$ {saldoLiquidoAtual.toFixed(2)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="bg-[#FFFFFF] border border-teal-500/30 rounded-2xl p-4 text-center">
+          <p className="text-xs font-black text-teal-600 uppercase mb-1">Recebido via PIX</p>
+          <p className="text-xl font-black text-teal-700">R$ {totalPix.toFixed(2)}</p>
+        </div>
+        <div className="bg-[#FFFFFF] border border-amber-500/30 rounded-2xl p-4 text-center">
+          <p className="text-xs font-black text-amber-600 uppercase mb-1">Recebido em Dinheiro</p>
+          <p className="text-xl font-black text-amber-700">R$ {totalDinheiro.toFixed(2)}</p>
+        </div>
+      </div>
+
+      <form onSubmit={lancarDespesaSimples} className="mb-6 p-4 bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl">
+        <h3 className="text-sm font-black text-red-400 uppercase mb-3">Lançar Despesa</h3>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={valorDespesaInput}
+            onChange={(e) => setValorDespesaInput(e.target.value)}
+            placeholder="0,00"
+            className="flex-1 bg-[#FFFAF5] border border-zinc-300 rounded-lg p-2.5 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2.5 bg-red-500/10 text-red-600 border border-red-500/20 rounded-lg font-black text-xs uppercase hover:bg-red-500/20 transition-all"
+          >
+            Registrar
+          </button>
+        </div>
+      </form>
+
+<button
+  type="button"
+  onClick={() => setModalConfirmarTurno(true)}
+  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-sm uppercase rounded-xl transition-all shadow-lg"
+>
+  🗂️ Arquivar Turno e Zerar Contadores
+</button>
+
+<button
+  type="button"
+  onClick={apagarHistoricoCaixas}
+  className="w-full mt-3 py-3 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl font-black text-sm uppercase hover:bg-red-500/20 transition-all"
+>
+  🗑️ Apagar Histórico de Fechamentos
+</button>
+      
+    </div>
+    {/* ✅ HISTÓRICO: SÓ O QUE VOCÊ FECHOU, SEM LIXO, COM DATA E SOMA */}
+    <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-5 shadow-xl">
+      <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-5 flex items-center gap-2">
+        📚 Histórico de Fechamentos
+      </h2>
+
+      {historicoCaixas.length === 0 ? (
+        <div className="text-center py-10 text-zinc-500 font-bold uppercase text-xs tracking-wider">
+          Nenhum fechamento registrado ainda
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* ✅ AGORA O SOMATÓRIO FICA AQUI, EM CIMA DE TUDO ✅ */}
+          <div className="mb-4 border-2 border-orange-300 rounded-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-4 shadow-md">
+              <h3 className="text-center text-orange-800 font-black uppercase text-lg mb-3">
+                🧾 SOMATÓRIO GERAL
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-2 bg-emerald-100 rounded-lg border border-emerald-200">
+                  <p className="text-xs font-black text-emerald-800 uppercase mb-1">Total Faturado</p>
+                  <p className="text-lg font-black text-emerald-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.faturado || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="text-center p-2 bg-red-100 rounded-lg border border-red-200">
+                  <p className="text-xs font-black text-red-800 uppercase mb-1">Total Despesas</p>
+                  <p className="text-lg font-black text-red-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="text-center p-2 bg-orange-100 rounded-lg border border-orange-200">
+                  <p className="text-xs font-black text-orange-800 uppercase mb-1">Lucro Total</p>
+                  <p className="text-lg font-black text-orange-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.saldoLiquido || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="text-center p-2 bg-teal-100 rounded-lg border border-teal-200">
+                  <p className="text-xs font-black text-teal-800 uppercase mb-1">Total Pix</p>
+                  <p className="text-lg font-black text-teal-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalPix || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="col-span-2 text-center p-2 bg-amber-100 rounded-lg border border-amber-200">
+                  <p className="text-xs font-black text-amber-800 uppercase mb-1">Total Dinheiro</p>
+                  <p className="text-lg font-black text-amber-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalDinheiro || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 🔽 AGORA SIM, APARECE OS FECHAMENTOS, UM EMBAIXO DO OUTRO 🔽 */}
+          {historicoCaixas.map((caixa, idx) => (
+            <div 
+              key={idx} 
+              className="bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all p-4"
+            >
+              {/* 📅 SÓ A DATA DO FECHAMENTO QUE VOCÊ FEZ */}
+              <div className="bg-orange-50 rounded-xl p-3 mb-3 border border-orange-200">
+                <p className="text-orange-900 font-black text-sm text-center">
+                  📅 {caixa.dataHora}
+                </p>
+              </div>
+
+              {/* VALORES DESSE FECHAMENTO */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <p className="text-xs font-black text-emerald-700 uppercase mb-1">Faturado</p>
+                  <p className="text-base font-black text-emerald-800">R$ {(caixa.faturado || 0).toFixed(2)}</p>
+                </div>
+
+                <div className="text-center p-2 bg-red-50 rounded-lg border border-red-100">
+                  <p className="text-xs font-black text-red-700 uppercase mb-1">Despesas</p>
+                  <p className="text-base font-black text-red-800">R$ {(caixa.despesas || 0).toFixed(2)}</p>
+                </div>
+
+                <div className="text-center p-2 bg-orange-50 rounded-lg border border-orange-100">
+                  <p className="text-xs font-black text-orange-700 uppercase mb-1">Lucro Líquido</p>
+                  <p className="text-base font-black text-orange-800">R$ {(caixa.saldoLiquido || 0).toFixed(2)}</p>
+                </div>
+
+                <div className="text-center p-2 bg-teal-50 rounded-lg border border-teal-100">
+                  <p className="text-xs font-black text-teal-700 uppercase mb-1">Recebido Pix</p>
+                  <p className="text-base font-black text-teal-800">R$ {(caixa.totalPix || 0).toFixed(2)}</p>
+                </div>
+
+                <div className="col-span-2 text-center p-2 bg-amber-50 rounded-lg border border-amber-100">
+                  <p className="text-xs font-black text-amber-700 uppercase mb-1">Recebido Dinheiro</p>
+                  <p className="text-base font-black text-amber-800">R$ {(caixa.totalDinheiro || 0).toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+
+        </div>
+      )}
+    </div>
+  </div>
+)}
+       
+  </div>
+)}
+
+</main>
+);
 }

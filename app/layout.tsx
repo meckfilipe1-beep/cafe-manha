@@ -31,7 +31,7 @@ export default function RootLayout({
       <head>
         {/* IMPEDIR CHROME DE PEDIR TRADUÇÃO */}
         <meta name="google" content="notranslate" />
-        <meta http-equiv="Content-Language" content="pt-BR" />
+        <meta httpEquiv="Content-Language" content="pt-BR" />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
