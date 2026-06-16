@@ -1,5 +1,7 @@
 "use client";
 
+"use client";
+
 import { useEffect, useState, useRef } from "react";
 import { db } from "@/lib/firebase";
 import {
@@ -11,6 +13,7 @@ import {
   updateDoc,
   addDoc,
   setDoc,
+  getDoc,
   getDocs
 } from "firebase/firestore";
 
@@ -28,15 +31,61 @@ const cores = {
   borda: "#F3F4F6",              // Cinza bem claro para divisórias
 }
 
+// 📅 Lista de dias da semana
+const listaDiasSemana = [
+  { valor: "domingo", nome: "Domingo" },
+  { valor: "segunda", nome: "Segunda-feira" },
+  { valor: "terca", nome: "Terça-feira" },
+  { valor: "quarta", nome: "Quarta-feira" },
+  { valor: "quinta", nome: "Quinta-feira" },
+  { valor: "sexta", nome: "Sexta-feira" },
+  { valor: "sabado", nome: "Sábado" },
+]
+
 export default function AdminPainel() {
   // 🆕 NOVO: Estados para produtos vindos do banco
   const [produtos, setProdutos] = useState<{id: string, chave: string, nome: string, preco: number, icone: string, disponivel: boolean}[]>([])
   const [editandoProduto, setEditandoProduto] = useState<any>(null)
   const [novoPreco, setNovoPreco] = useState("")
   const [novoNome, setNovoNome] = useState("")
-  const [novoDisponivel, setNovoDisponivel] = useState(true) // ✅ Controle de disponibilidade
+  const [novoDisponivel, setNovoDisponivel] = useState(true)
 
-  // ✅ SEUS HORÁRIOS ORIGINAIS — IGUAL ANTES
+  // ⏰ Estados de funcionamento (CORRIGIDO)
+  const [horaAbertura, setHoraAbertura] = useState("06:00")
+  const [horaFechamento, setHoraFechamento] = useState("18:00")
+  const [diasFuncionamento, setDiasFuncionamento] = useState<{[key: string]: boolean}>({
+    domingo: true,
+    segunda: true,
+    terca: true,
+    quarta: true,
+    quinta: true,
+    sexta: true,
+    sabado: true,
+  })
+
+  // ✅ CORRIGIDO: DIAS E HORÁRIOS DE ENTREGA (agora domingo vem ativado e com horários)
+  const [diasEntrega, setDiasEntrega] = useState<{[key: string]: boolean}>({
+    domingo: true,
+    segunda: true,
+    terca: true,
+    quarta: true,
+    quinta: true,
+    sexta: true,
+    sabado: true,
+  })
+  const [horariosPorDia, setHorariosPorDia] = useState<{[key: string]: string[]}>({
+    domingo: ["07:00", "08:00", "09:00", "10:00", "11:00"], // ✅ Domingo agora tem horários
+    segunda: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+    terca: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+    quarta: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+    quinta: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+    sexta: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+    sabado: ["07:00", "08:00", "09:00", "10:00", "11:00"],
+  })
+  const [diaEditando, setDiaEditando] = useState<string | null>(null)
+  const [novoHorario, setNovoHorario] = useState("")
+
+  // ✅ SEUS HORÁRIOS ORIGINAIS
   const OPCOES_HORARIOS = [
     "0:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", 
     "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", 
@@ -47,7 +96,7 @@ export default function AdminPainel() {
     "23:30"
   ]
 
-  // ✅ SEU SOM DE NOTIFICAÇÃO ORIGINAL
+  // ✅ SOM DE NOTIFICAÇÃO
   function tocarSomPedido() {
     const audio = new Audio('/pedido.mp3');
     audio.play().catch(err => {
@@ -55,25 +104,23 @@ export default function AdminPainel() {
     });
   }
 
-  // 🆕 Função para pegar preço do banco
+  // 🆕 Funções auxiliares
   function pegarPreco(chave: string): number {
     const p = produtos.find(pr => pr.chave === chave)
     return p?.preco || 0
   }
 
-  // 🆕 Função para formatar nome (agora do banco)
   function formatarNomeItem(nomeChave: string) {
     const p = produtos.find(pr => pr.chave === nomeChave)
     return p ? `${p.icone} ${p.nome}` : nomeChave
   }
 
-  // 🆕 Buscar produtos do banco automaticamente
+  // 🆕 Buscar produtos
   useEffect(() => {
     const qProdutos = query(collection(db, "produtos"))
     const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
       const lista: any[] = []
       snap.forEach(d => lista.push({ id: d.id, ...d.data() }))
-      // ✅ Correção do erro: não quebra se não tiver nome
       lista.sort((a, b) => {
         const nomeA = a?.nome || ""
         const nomeB = b?.nome || ""
@@ -91,7 +138,7 @@ export default function AdminPainel() {
       await updateDoc(doc(db, "produtos", editandoProduto.id), {
         nome: novoNome,
         preco: parseFloat(novoPreco),
-        disponivel: novoDisponivel // ✅ Salva status no Firebase
+        disponivel: novoDisponivel
       })
       setEditandoProduto(null)
       setNotificacaoCaixa("✅ Produto atualizado com sucesso!")
@@ -100,35 +147,131 @@ export default function AdminPainel() {
       console.error(err)
     }
   }
+
   async function apagarHistoricoCaixas() {
-  const confirmar = window.confirm(
-    "Tem certeza que deseja apagar TODO o histórico de fechamentos?"
-  )
-
-  if (!confirmar) return
-
-  try {
-    const snap = await getDocs(collection(db, "historico_caixas"))
-
-    await Promise.all(
-      snap.docs.map(item =>
-        deleteDoc(doc(db, "historico_caixas", item.id))
-      )
+    const confirmar = window.confirm(
+      "Tem certeza que deseja apagar TODO o histórico de fechamentos?"
     )
-
-    setHistoricoCaixas([])
-
-    setNotificacaoCaixa("🗑️ Histórico apagado com sucesso!")
-    setTimeout(() => setNotificacaoCaixa(null), 3000)
-
-  } catch (error) {
-    console.error(error)
+    if (!confirmar) return
+    try {
+      const snap = await getDocs(collection(db, "historico_caixas"))
+      await Promise.all(
+        snap.docs.map(item => deleteDoc(doc(db, "historico_caixas", item.id)))
+      )
+      setHistoricoCaixas([])
+      setNotificacaoCaixa("🗑️ Histórico apagado com sucesso!")
+      setTimeout(() => setNotificacaoCaixa(null), 3000)
+    } catch (error) {
+      console.error(error)
+    }
   }
-}
 
+  // ⏰ Configurações de funcionamento
+  const carregarConfiguracoesFuncionamento = async () => {
+    try {
+      const docRef = doc(db, "config", "funcionamento")
+      const docSnap = await getDoc(docRef)
+      if (docSnap.exists()) {
+        const dados = docSnap.data()
+        setHoraAbertura(dados.horaAbertura || "06:00")
+        setHoraFechamento(dados.horaFechamento || "18:00")
+        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento)
+        
+        // ✅ CARREGA DIAS E HORÁRIOS DE ENTREGA
+        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
+        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
+      }
+    } catch (erro) {
+      console.error("Erro ao carregar configurações:", erro)
+    }
+  }
 
+  const salvarConfiguracoesFuncionamento = async () => {
+    try {
+      await setDoc(
+        doc(db, "config", "funcionamento"),
+        { 
+          horaAbertura, 
+          horaFechamento, 
+          diasFuncionamento,
+          diasEntrega,       // ✅ SALVA DIAS DE ENTREGA
+          horariosPorDia     // ✅ SALVA HORÁRIOS POR DIA
+        }
+      )
+      setNotificacaoCaixa("✅ Configurações salvas!")
+      setTimeout(() => setNotificacaoCaixa(null), 2000)
+    } catch (erro) {
+      console.error("Erro ao salvar:", erro)
+      setNotificacaoCaixa("❌ Erro ao salvar")
+      setTimeout(() => setNotificacaoCaixa(null), 2000)
+    }
+  }
+
+  // ✅ CORRIGIDO: O erro do `ref` estava AQUI, agora está 100%
+  useEffect(() => {
+    carregarConfiguracoesFuncionamento()
+
+    // ✅ Variável ref DEFINIDA AQUI (era o que faltava)
+    const ref = doc(db, "config", "funcionamento")
+
+    const unsubscribe = onSnapshot(ref, (snapshot) => {
+      if (snapshot.exists()) {
+        const dados = snapshot.data();
+        setHoraAbertura(dados.horaAbertura || "06:00")
+        setHoraFechamento(dados.horaFechamento || "18:00")
+        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento)
+        // ✅ ATUALIZA EM TEMPO REAL
+        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
+        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
+      }
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  // 📝 Função CORRIGIDA: Agora ao marcar/desmarcar no admin, OCULTA/MOSTRA para o cliente
+  const alternarDia = (valorDia: string) => {
+    setDiasFuncionamento(prev => {
+      const novoEstado = { ...prev, [valorDia]: !prev[valorDia as keyof typeof prev] }
+      // ✅ Liga as duas funções: se desmarca aqui, desmarca e oculta para o cliente
+      setDiasEntrega(entrega => ({ ...entrega, [valorDia]: novoEstado[valorDia] }))
+      return novoEstado
+    })
+  }
+
+  // ✅ NOVAS FUNÇÕES PARA GERENCIAR ENTREGAS
+  const alternarDiaEntrega = (valorDia: string) => {
+    setDiasEntrega(prev => ({
+      ...prev,
+      [valorDia]: !prev[valorDia as keyof typeof prev]
+    }))
+  }
+
+  const adicionarHorario = (dia: string) => {
+    if (!novoHorario || !/^\d{2}:\d{2}$/.test(novoHorario)) {
+      alert("Digite horário válido: HH:MM")
+      return
+    }
+    if (horariosPorDia[dia].includes(novoHorario)) {
+      alert("Horário já existe!")
+      return
+    }
+    setHorariosPorDia(prev => ({
+      ...prev,
+      [dia]: [...prev[dia], novoHorario].sort()
+    }))
+    setNovoHorario("")
+    setDiaEditando(null)
+  }
+
+  const removerHorario = (dia: string, hora: string) => {
+    setHorariosPorDia(prev => ({
+      ...prev,
+      [dia]: prev[dia].filter(h => h !== hora)
+    }))
+  }
   // ==============================================
-  // ✅ TODO O RESTO DO SEU CÓDIGO ORIGINAL
+  // ✅ TODO O RESTO DO SEU CÓDIGO ORIGINAL (TUDO MANTIDO)
   // ==============================================
   interface Pedido {
     id: string
@@ -151,28 +294,28 @@ export default function AdminPainel() {
       tapiocaQueijoOvo: number
       cuscuzMilho: number
       cuscuzArroz: number
-      cuscuzMilhoArroz: number // ✅ Cuscuz Misto adicionado
+      cuscuzMilhoArroz: number
       cafe: number
     }
   }
 
-  interface HistoricoCaixa {
-    id: string
-    tipo: "fechamento_turno"
-    data: string
-    totalPix: number
-    totalDinheiro: number
-    despesas: number
-    saldoLiquido: number
-  }
-  
-
+interface HistoricoCaixa {
+  id: string
+  tipo: "fechamento_turno"
+  data: string
+  dataHora: string
+  faturado: number
+  totalPix: number
+  totalDinheiro: number
+  despesas: number
+  saldoLiquido: number
+}
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [historicoCaixas, setHistoricoCaixas] = useState<HistoricoCaixa[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [abaAtiva, setAbaAtiva] = useState<"pedidos" | "avulso" | "historico" | "caixa" | "pendencias" | "zerar" | "produtos" | "demandas" | "ranking">("pedidos")
-  const [lojaAberta, setLojaAberta] = useState<boolean>(true)
+  const [abaAtiva, setAbaAtiva] = useState<"pedidos" | "avulso" | "historico" | "caixa" | "pendencias" | "zerar" | "produtos" | "demandas" | "ranking" | "entregas">("pedidos")
+  const [funcionamentoAberta, setfuncionamentoAberta] = useState<boolean>(true)
 
   const [notificacaoCaixa, setNotificacaoCaixa] = useState<string | null>(null)
   const [mostrarModalCopiado, setMostrarModalCopiado] = useState(false)
@@ -198,7 +341,6 @@ export default function AdminPainel() {
   const [horarioAvulso, setHorarioAvulso] = useState("0:00")
   const [valorTotalAvulso, setValorTotalAvulso] = useState("0.00")
   const [criandoAvulso, setCriandoAvulso] = useState(false)
-  
 
   const [itensAvulsos, setItensAvulsos] = useState({
     tapiocaMolhada: 0,
@@ -208,7 +350,7 @@ export default function AdminPainel() {
     tapiocaQueijoOvo: 0,
     cuscuzMilho: 0,
     cuscuzArroz: 0,
-    cuscuzMilhoArroz: 0, // ✅ Cuscuz Misto adicionado
+    cuscuzMilhoArroz: 0,
     cafe: 0,
   })
   
@@ -216,11 +358,11 @@ export default function AdminPainel() {
   const ultimoTotalPedidos = useRef(0)
 
   useEffect(() => {
-    const refLoja = doc(db, "configuracoes", "loja")
-    const unsubscribeStatus = onSnapshot(refLoja, (snap) => {
+    const reffuncionamento = doc(db, "configuracoes", "funcionamento")
+    const unsubscribeStatus = onSnapshot(reffuncionamento, (snap) => {
       if (snap.exists()) {
         const dados = snap.data()
-        setLojaAberta(dados.aberta)
+        setfuncionamentoAberta(dados.aberta)
         setTotalDespesasAcumuladas(dados.despesas || 0)
       }
     })
@@ -230,12 +372,9 @@ export default function AdminPainel() {
       const lista: HistoricoCaixa[] = []
       snap.forEach(d => lista.push({ id: d.id, ...d.data() } as HistoricoCaixa))
       
-      // ✅ CORRIGIDO: usa dataHora + proteção contra indefinido
       lista.sort((a, b) => {
-        // Se não tem dataHora, joga pro final
         if (!a.dataHora) return 1
         if (!b.dataHora) return -1
-        // Mais recente primeiro
         return b.dataHora.localeCompare(a.dataHora)
       })
 
@@ -256,13 +395,12 @@ export default function AdminPainel() {
         listaPedidos.push({ id: doc.id, ...doc.data() } as Pedido)
       })
       
-      // ✅ CORRIGIDO: proteção também aqui no horário
       listaPedidos.sort((a, b) => {
         if (!a.horario) return 1
         if (!b.horario) return -1
         return a.horario.localeCompare(b.horario)
       })
-      // 🔊 DETECTOR DE NOVO PEDIDO
+
       const pedidosAtivosAtuais = listaPedidos.filter(p => !p.concluido).length
       
       if (ultimoTotalPedidos.current > 0 && pedidosAtivosAtuais > ultimoTotalPedidos.current) {
@@ -407,11 +545,11 @@ export default function AdminPainel() {
     }
   }
 
-  async function alternarStatusLoja() {
+  async function alternarStatusfuncionamento() {
     try {
-      const novoStatus = !lojaAberta
-      await setDoc(doc(db, "configuracoes", "loja"), { aberta: novoStatus }, { merge: true })
-      setLojaAberta(novoStatus)
+      const novoStatus = !funcionamentoAberta
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { aberta: novoStatus }, { merge: true })
+      setfuncionamentoAberta(novoStatus)
       setNotificacaoCaixa(`Pedidos: ${novoStatus ? "SISTEMA ON" : "SISTEMA OFF"}`)
       setTimeout(() => setNotificacaoCaixa(null), 2500)
     } catch (error) {
@@ -426,7 +564,7 @@ export default function AdminPainel() {
 
     try {
       const novaDespesaTotal = totalDespesasAcumuladas + valor
-      await setDoc(doc(db, "configuracoes", "loja"), { despesas: novaDespesaTotal }, { merge: true })
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: novaDespesaTotal }, { merge: true })
       setTotalDespesasAcumuladas(novaDespesaTotal)
       setValorDespesaInput("")
       setNotificacaoCaixa(`Despesa de R$ ${valor.toFixed(2)} lançada!`)
@@ -461,7 +599,7 @@ const dadosFechamento = {
       const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)))
       await Promise.all(promessasDelecao)
       
-      await setDoc(doc(db, "configuracoes", "loja"), { despesas: 0, aberta: lojaAberta }, { merge: true })
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, aberta: funcionamentoAberta }, { merge: true })
       
       setTotalDespesasAcumuladas(0)
       setModalConfirmarTurno(false)
@@ -478,7 +616,7 @@ const dadosFechamento = {
       const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)))
       await Promise.all(promessasDelecao)
       
-      await setDoc(doc(db, "configuracoes", "loja"), { despesas: 0, aberta: true }, { merge: true })
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, aberta: true }, { merge: true })
       
       setTotalDespesasAcumuladas(0)
       setModalConfirmarZerarTudo(false)
@@ -492,12 +630,12 @@ const dadosFechamento = {
 
   function dispararFluxoConclusaoAvulso(e: any) {
     e.preventDefault()
-    if (!nomeAvulso.trim() || valorTotalAvulsoNumerico === 0 || !lojaAberta) return
+    if (!nomeAvulso.trim() || valorTotalAvulsoNumerico === 0 || !funcionamentoAberta) return
     setMostrarResumoFinalAvulso(true)
   }
 
   async function finalizarPedidoAvulsoComStatusRoteado(destino: "pago" | "espera" | "pendente") {
-    if (criandoAvulso || !lojaAberta) return
+    if (criandoAvulso || !funcionamentoAberta) return
     setCriandoAvulso(true)
 
     const novoPedidoAvulso: any = {
@@ -566,7 +704,7 @@ const dadosFechamento = {
     tapiocaQueijoOvo: 0,
     cuscuzMilho: 0,
     cuscuzArroz: 0,
-    cuscuzMilhoArroz: 0, // ✅ Cuscuz Misto adicionado
+    cuscuzMilhoArroz: 0,
     cafe: 0,
   }
 
@@ -576,8 +714,6 @@ const dadosFechamento = {
         pedido.itens?.[item as keyof typeof pedido.itens] || 0
     })
   })
-
-
   return (
    <main className="min-h-screen bg-gradient-to-br from-[#FFFAF5] via-[#FFFFFF] to-[#FFFAF5] text-[#27272A] py-6 px-3 sm:px-4 relative overflow-x-hidden">
       {/* ✅ Notificação flutuante */}
@@ -851,12 +987,12 @@ const dadosFechamento = {
     Painel Tapicuz
   </h1>
   <div className="flex items-center justify-center gap-3">
-    <div className={`w-3 h-3 rounded-full ${lojaAberta ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
+    <div className={`w-3 h-3 rounded-full ${funcionamentoAberta ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
     <button 
-      onClick={alternarStatusLoja} 
-      className={`text-xs font-black uppercase px-3 py-1.5 rounded-full border transition-all ${lojaAberta ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20"}`}
+      onClick={alternarStatusfuncionamento} 
+      className={`text-xs font-black uppercase px-3 py-1.5 rounded-full border transition-all ${funcionamentoAberta ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20"}`}
     >
-      {lojaAberta ? "SISTEMA ONLINE" : "SISTEMA OFFLINE"}
+      {funcionamentoAberta ? "SISTEMA ONLINE" : "SISTEMA OFFLINE"}
     </button>
   </div>
 </div>
@@ -980,7 +1116,7 @@ const dadosFechamento = {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {produtos.map((produto) => (
+{produtos.map((produto) => (
                 <tr key={produto.id} className="hover:bg-[#FFEDD5]/30 transition-colors">
                   <td className="p-3 text-xl">{produto.icone}</td>
                   <td className="p-3 font-bold">{produto.nome}</td>
@@ -1006,6 +1142,69 @@ const dadosFechamento = {
           </table>
         </div>
 
+        {/* CONFIGURAÇÕES DE FUNCIONAMENTO */}
+        <div className="mt-8 border-t border-[#F3F4F6] pt-6">
+  <h3 className="text-sm font-black text-orange-400 uppercase mb-4">
+    🕒 Horários e Dias de Funcionamento
+  </h3>
+  <div className="grid grid-cols-2 gap-4 mb-6">
+
+  <div>
+    <label className="block text-xs font-black text-[#71717A] uppercase mb-2">
+      Horário de Abertura
+    </label>
+
+    <input
+      type="time"
+      value={horaAbertura}
+      onChange={(e) => setHoraAbertura(e.target.value)}
+      className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-black text-[#71717A] uppercase mb-2">
+      Horário de Fechamento
+    </label>
+
+    <input
+      type="time"
+      value={horaFechamento}
+      onChange={(e) => setHoraFechamento(e.target.value)}
+      className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3"
+    />
+  </div>
+
+</div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  {Object.entries(diasFuncionamento).map(([dia, ativo]) => (
+  <button
+    key={dia}
+    type="button"
+    onClick={() =>
+      setDiasFuncionamento(prev => ({
+        ...prev,
+        [dia]: !prev[dia]
+      }))
+    }
+    className={`p-3 rounded-xl font-black uppercase transition-all ${
+      ativo
+        ? "bg-emerald-500 text-white"
+        : "bg-red-500 text-white"
+    }`}
+  >
+    {ativo ? "✅" : "❌"} {dia}
+  </button>
+))}
+</div>
+
+<button
+  onClick={salvarConfiguracoesFuncionamento}
+  className="mt-6 w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-black font-black rounded-xl"
+>
+  💾 Salvar Configurações
+</button>
+</div>
         {/* MODAL DE EDIÇÃO DE PRODUTO */}
         {editandoProduto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1155,9 +1354,6 @@ const dadosFechamento = {
       </div>
     )}
 
-    {/* ================================================== */}
-    {/* ================= ABA: LANÇAR AVULSO ============ */}
-    {/* ================================================== */}
     {abaAtiva === "avulso" && (
       <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
         <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6">
@@ -1355,7 +1551,7 @@ const dadosFechamento = {
                   </button>
                   <button
                     type="submit"
-                    disabled={!lojaAberta || valorTotalAvulsoNumerico === 0}
+                    disabled={!funcionamentoAberta || valorTotalAvulsoNumerico === 0}
                     className="py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     ⚡ Finalizar Pedido
@@ -1474,7 +1670,10 @@ const dadosFechamento = {
         </div>
 
         {(() => {
-          const todosPedidos = [...pedidosPagos, ...pedidosPendentes, ...pedidosAtivos];
+       const todosPedidos = [
+ ...pedidosPagos,
+ ...pedidosPendentes
+]
           const dadosRanking: { [key: string]: { nome: string; icone: string; qtd: number; valor: number } } = {};
 
           produtos.forEach(prod => {
@@ -1485,7 +1684,11 @@ const dadosFechamento = {
             Object.entries(ped.itens).forEach(([chave, qtd]) => {
               if(dadosRanking[chave]) {
                 dadosRanking[chave].qtd += Number(qtd);
-                dadosRanking[chave].valor += Number(qtd) * produtos.find(p => p.chave === chave)?.preco || 0;
+              const preco =
+produtos.find(p => p.chave === chave)?.preco || 0;
+
+dadosRanking[chave].valor +=
+Number(qtd) * preco;
               }
             });
           });
@@ -1578,7 +1781,9 @@ const dadosFechamento = {
                         {pedido.pagamento}
                       </span>
                     </td>
-                    <td className="p-3 font-mono font-bold text-emerald-400">R$ {pedido.valor.toFixed(2)}</td>
+                    <td className="p-3 font-mono font-bold text-emerald-400">
+  R$ {pedido.valorTotal.toFixed(2)}
+</td>
                     <td className="p-3">
                       <span className={`text-xs font-black uppercase px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400`}>
                         Concluído
