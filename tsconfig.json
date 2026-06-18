@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-, "app/admin/page_admin.tsx", "next.config.js", "lib/pix.ts"  ],
+, "app/admin/page_admin.tsx", "next.funcionamento.js", "lib/pix.ts"  ],
   "exclude": ["node_modules"]
 }

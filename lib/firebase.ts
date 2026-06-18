@@ -2,8 +2,8 @@ import { initializeApp } from "firebase/app"
 import { getFirestore } from "firebase/firestore"
 import { useState, useEffect } from 'react' // se já não tiver esse import
 
-// SEU CÓDIGO DE CONFIGURAÇÃO QUE VOCÊ ME MANDOU
-const firebaseConfig = {
+// SEU CÓDIGO DE funcionamentoURAÇÃO QUE VOCÊ ME MANDOU
+const firebasefuncionamento = {
   apiKey: "AIzaSyAsRmWaIlgfLSnv0xU1CBKi_8KNhDnhNjg",
   authDomain: "tapicuz-aa78f.firebaseapp.com",
   projectId: "tapicuz-aa78f",
@@ -13,5 +13,5 @@ const firebaseConfig = {
   measurementId: "G-P4FC9P4J1L"
 }
 
-const app = initializeApp(firebaseConfig)
+const app = initializeApp(firebasefuncionamento)
 export const db = getFirestore(app)

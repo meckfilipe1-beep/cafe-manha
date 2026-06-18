@@ -1,7 +1,7 @@
-const config = {
+const funcionamento = {
   plugins: {
     "@tailwindcss/postcss": {},
   },
 };
 
-export default config;
+export default funcionamento;
