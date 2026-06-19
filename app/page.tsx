@@ -502,7 +502,8 @@ if (!validarTelefone(telefone)) {
                 📖 UMA PALAVRA PARA O SEU DIA:
               </span>
               <p className="text-base text-[#03030f] font-bold leading-relaxed px-1">
-                "{versiculoEscolhido}"
+                "{versiculoEscolhido}
+
               </p>
             </div>
           )}

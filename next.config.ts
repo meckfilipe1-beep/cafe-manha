@@ -1,7 +1,5 @@
-import type { Nextfuncionamento } from "next";
+import type { NextConfig } from "next";
 
-const nextfuncionamento: Nextfuncionamento = {
-  /* funcionamento options here */
-};
+const nextConfig: NextConfig = {};
 
-export default nextfuncionamento;
+export default nextConfig;
