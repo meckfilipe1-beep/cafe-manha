@@ -922,7 +922,7 @@ if (!validarTelefone(telefone)) {
             {horariosPermitidosParaDia().length === 0 ? (
               <p className="text-red-600 font-black col-span-4">Nenhum horário cadastrado para este dia</p>
             ) : (
-              horariosPermitidosParaDia().map(hora => (
+              horariosPermitidosParaDia().map((hora: string) => (
                 <button
                   key={hora}
                   type="button"

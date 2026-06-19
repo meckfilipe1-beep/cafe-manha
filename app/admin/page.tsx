@@ -338,27 +338,25 @@ Obrigado pela preferência! 🧡`
       [dia]: prev[dia].filter(h => h !== hora)
     }))
   }
-
-  // ==============================================
-  // ✅ TODO O RESTO DO SEU CÓDIGO ORIGINAL (TUDO MANTIDO)
-  // ==============================================
- interface Pedido {
+interface Pedido {
   id: string
   nome: string
-  // endereco: string  // pode manter ou remover se não usar mais
-  rua: string          // ADICIONADO
-  numero: string       // ADICIONADO
-  bairro?: string      // ADICIONADO (opcional)
-  cidade?: string      // ADICIONADO (opcional)
+  endereco: string
+  rua: string
+  numero: string
+  bairro?: string
+  cidade?: string
   observacao?: string
   pagamento: string
   troco: number
+  trocoPara: number       // ✅ ADICIONADO AQUI (campo que faltava)
   valorTotal: number
   horario: string
   pago: boolean
   concluido: boolean
   statusPagamento?: "pendente" | "pago"
   dataCriacao?: any
+  telefone?: string
   itens: {
     tapiocaMolhada: number
     tapiocaManteiga: number
@@ -371,6 +369,7 @@ Obrigado pela preferência! 🧡`
     cafe: number
   }
 }
+
 interface HistoricoCaixa {
   id: string
   tipo: "fechamento_turno"
@@ -382,7 +381,6 @@ interface HistoricoCaixa {
   despesas: number
   saldoLiquido: number
 }
-
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [historicoCaixas, setHistoricoCaixas] = useState<HistoricoCaixa[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -1048,7 +1046,7 @@ Agradecemos a preferência.`;
                     return
                   }
                   const pedido = pedidoSelecionadoParaConcluir;
-                  const numero = pedido.telefone.replace(/\D/g, "");
+                  const numero = pedido.telefone?.replace(/\D/g, "") || "";
 
                   let mensagemCompleta = `Olá ${pedido.nome}.
 Seu pedido da Tapicuz foi recebido e já está sendo preparado!
