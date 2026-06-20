@@ -205,8 +205,12 @@ const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
 
        // ✅ Validação do WhatsApp: obrigatório começar com 919
 function validarTelefone(telefone: string): boolean {
-  const apenasNumeros = telefone.replace(/\D/g, "") // tira espaços e símbolos
-  return apenasNumeros.startsWith("919") && apenasNumeros.length >= 9
+  const apenasNumeros = telefone.replace(/\D/g, "")
+
+  return (
+    apenasNumeros.startsWith("919") &&
+    apenasNumeros.length === 11
+  )
 }
   // Verifica se loja está aberta
 function verificarSeEstaAberto(dados: any) {
@@ -465,27 +469,26 @@ if (!validarTelefone(telefone)) {
     )
   }
 
-  if (etapa === "sucesso") {
+ if (etapa === "sucesso") {
     return (
       <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
-        <div className="max-w-md w-full bg-[#FFFFFF] border-4 border-orange-500 rounded-3xl p-8 shadow-2xl space-y-6">
-          <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto shadow-inner animate-bounce">
+        <div className="max-w-md w-full bg-[#FFFFFF] border-4 border-orange-500 rounded-3xl p-6 shadow-2xl space-y-5">
+          <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto shadow-inner animate-bounce">
             ✓
           </div>
           <div className="space-y-2">
             <h2 className="text-xl font-black text-emerald-400 tracking-wider uppercase">
-              PEDIDO ENVIADO COM SUCESSO!
+              PEDIDO ENVIADO!
             </h2>
           </div>
 
           {versiculoEscolhido && (
-            <div className="border-2 border-amber-500/30 py-5 my-2 space-y-3 bg-[#FFFAF5] rounded-2xl p-5 shadow-inner">
+            <div className="border-2 border-amber-500/30 py-4 my-2 space-y-3 bg-[#FFFAF5] rounded-2xl p-4 shadow-inner">
               <span className="text-xs font-black text-amber-800 tracking-widest block uppercase">
-                📖 UMA PALAVRA PARA O SEU DIA:
+                📖 PALAVRA DO DIA:
               </span>
               <p className="text-base text-[#03030f] font-bold leading-relaxed px-1">
-                "{versiculoEscolhido}
-
+                "{versiculoEscolhido}"
               </p>
             </div>
           )}
@@ -493,7 +496,7 @@ if (!validarTelefone(telefone)) {
           <button 
             type="button"
             onClick={reiniciarPainel}
-            className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-black text-sm uppercase tracking-widest rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-black text-sm uppercase tracking-widest rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             AMÉM 🙏
           </button>
@@ -503,16 +506,16 @@ if (!validarTelefone(telefone)) {
   }
 
   return (
-    <main className="min-h-screen bg-[#FFFAF5] text-[#27272A] pb-32 font-sans antialiased selection:bg-orange-500/20">
+    <main className="min-h-screen bg-[#FFFAF5] text-[#27272A] pb-28 font-sans antialiased selection:bg-orange-500/20">
       
       {mostrarMensagemCopiado && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-emerald-500 text-[#27272A] px-8 py-6 rounded-2xl shadow-2xl transform scale-105 transition-all">
+          <div className="bg-emerald-500 text-[#27272A] px-6 py-5 rounded-2xl shadow-2xl transform scale-105 transition-all max-w-[90%]">
             <div className="flex items-center gap-3">
               <span className="text-3xl">✅</span>
               <div className="text-left">
                 <h3 className="font-black text-lg">CÓDIGO COPIADO!</h3>
-                <p className="text-sm text-emerald-100">Agora é só colar no seu app do banco 🚀</p>
+                <p className="text-sm text-emerald-100">Cole no app do banco 🚀</p>
               </div>
             </div>
           </div>
@@ -521,25 +524,26 @@ if (!validarTelefone(telefone)) {
 
       {mostrarAlertaPix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-[#FFFFFF] border-4 border-emerald-500 max-w-md w-full rounded-[32px] p-8 text-center shadow-2xl space-y-6">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 text-4xl flex items-center justify-center mx-auto">
+          <div className="bg-[#FFFFFF] border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 text-center shadow-2xl space-y-5">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl flex items-center justify-center mx-auto">
               📲
             </div>
             
-            <h3 className="text-2xl font-black text-emerald-400 uppercase tracking-wide">
+            <h3 className="text-xl font-black text-emerald-400 uppercase tracking-wide">
               PIX GERADO COM SUCESSO!
             </h3>
             
-            <div className="space-y-4 text-[#080811] text-xl font-bold leading-snug">
-              <p className="text-lg text-[#030314]">Olá,</p>
-              <p className="text-4xl font-black text-orange-500 tracking-wide uppercase break-words px-2">
+            <div className="space-y-4 text-[#080811] font-bold leading-snug">
+              <p className="text-base text-[#030314]">Olá,</p>
+              <p className="text-2xl font-black text-orange-500 tracking-wide uppercase break-words px-2">
                 {nome || "CLIENTE"}
               </p>
-              <p className="text-[#27272A] pt-2">
-                Copie o código abaixo e cole no seu aplicativo bancário:
+              <p className="text-[#27272A] pt-2 text-sm">
+                Copie o código abaixo e cole no aplicativo bancário:
               </p>
 
-              <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#F3F4F6] break-all text-xs text-[#27272A] select-all">
+              {/* Código PIX — Tamanho bom, legível e quebra certo */}
+              <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#F3F4F6] break-all text-xs leading-relaxed text-[#27272A] select-all">
                 {codigoPix}
               </div>
 
@@ -554,12 +558,12 @@ if (!validarTelefone(telefone)) {
                     alert("❌ Erro ao copiar. Selecione o texto acima e copie manualmente.")
                   }
                 }}
-                className="w-full py-4 bg-orange-500 text-[#27272A] font-black rounded-xl text-base uppercase tracking-widest transition-all active:scale-95 shadow-lg"
+                className="w-full py-3.5 bg-orange-500 text-[#27272A] font-black rounded-xl text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg"
               >
                 📋 COPIAR PIX
               </button>
 
-              <p className="bg-red-50 border-2 border-red-500 text-red-700 p-3 rounded-2xl font-black text-sm uppercase shadow-inner text-center">
+              <p className="bg-red-50 border-2 border-red-500 text-red-700 p-3 rounded-xl font-black text-xs uppercase shadow-inner text-center">
                 NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO!
               </p>
             </div>
@@ -568,7 +572,7 @@ if (!validarTelefone(telefone)) {
               type="button"
               disabled={enviandoPedido}
               onClick={salvarPedidoNoBanco}
-              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-base uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
+              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
             >
               {enviandoPedido ? "GRAVANDO PEDIDO..." : "FINALIZAR ✅"}
             </button>
@@ -579,13 +583,13 @@ if (!validarTelefone(telefone)) {
       <header className="sticky top-0 z-40 bg-[#FFFFFF]/90 backdrop-blur-md border-b border-[#F3F4F6]/60 px-4 py-4 shadow-md">
         <div className="max-w-2xl mx-auto flex items-center justify-center relative">
           <div className="text-center select-none">
-            <h1 className="text-2xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
+            <h1 className="text-xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
             <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5"></p>
-          {diaEscolhido && (
-  <p className="text-base font-black text-orange-600 mt-2 tracking-wider">
-    📅 Entrega agendada para {diaEscolhido.nome}
-  </p>
-)}
+            {diaEscolhido && (
+              <p className="text-base font-black text-orange-600 mt-2 tracking-wider">
+                📅 Entrega agendada para {diaEscolhido.nome}
+              </p>
+            )}
           </div>
         </div>
       </header>
@@ -831,10 +835,12 @@ if (!validarTelefone(telefone)) {
   <input
     id="campo-telefone"
     type="tel"
-    value={telefone}
-    onChange={(e) => {
-      setTelefone(e.target.value)
-      setErroValidacao(null) // limpa erro ao digitar
+  value={telefone}
+  maxLength={11}
+  onChange={(e) => {
+    const numero = e.target.value.replace(/\D/g, "")
+    setTelefone(numero.slice(0, 11))
+    setErroValidacao(null)
     }}
     placeholder="919XXXX-XXXX"
     className={`w-full max-w-md p-4 rounded-xl border-2 bg-[#FFFAF5] text-base text-black font-black placeholder:text-orange-400 focus:outline-none focus:ring-2 transition-all shadow-sm text-center
@@ -847,7 +853,7 @@ if (!validarTelefone(telefone)) {
   {/* ✅ ALERTA VISÍVEL SE ESTIVER ERRADO */}
   {telefone && !validarTelefone(telefone) && (
     <p className="text-red-600 font-black text-sm uppercase text-center px-2 py-1 bg-red-50 rounded-lg border border-red-300 shadow-sm animate-pulse">
-      ⚠️ COMECE COM 919 + O RESTANTE DO NÚMERO
+      "⚠️ Digite um WhatsApp válido com 11 números. Exemplo: 91982116522"
     </p>
   )}
   <p className="text-[10px] text-orange-500 font-bold uppercase">Digite começando com 919 + o restante</p>
