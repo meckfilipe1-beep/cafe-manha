@@ -2259,19 +2259,20 @@ Agradecemos a preferência.`;
         </div>
       </div>
 
-      <form onSubmit={lancarDespesaSimples} className="mb-6 p-4 bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl">
-        <h3 className="text-sm font-black text-red-400 uppercase mb-3">Lançar Despesa</h3>
-        <div className="flex gap-3">
+      {/* ✅ FORMULÁRIO DE DESPESA AJUSTADO E ESPAÇOSO ✅ */}
+      <form onSubmit={lancarDespesaSimples} className="mb-6 p-5 bg-[#FFFFFF] border border-[#F3F4F6] rounded-2xl shadow-sm">
+        <h3 className="text-base font-black text-red-400 uppercase mb-4 text-center">Lançar Despesa</h3>
+        <div className="flex flex-row items-center gap-3 w-full">
           <input
             type="text"
             value={valorDespesaInput}
             onChange={(e) => setValorDespesaInput(e.target.value)}
-            placeholder="0,00"
-            className="flex-1 bg-[#FFFAF5] border border-zinc-300 rounded-lg p-2.5 text-[#27272A] font-bold focus:outline-none focus:border-orange-500"
+            placeholder="Digite o valor"
+            className="flex-1 bg-[#FFFAF5] border border-zinc-300 rounded-xl p-3.5 text-base text-[#27272A] font-bold focus:outline-none focus:border-red-400 transition-all"
           />
           <button
             type="submit"
-            className="px-4 py-2.5 bg-red-500/10 text-red-600 border border-red-500/20 rounded-lg font-black text-xs uppercase hover:bg-red-500/20 transition-all"
+            className="shrink-0 px-5 py-3.5 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl font-black text-sm uppercase hover:bg-red-500/20 active:scale-95 transition-all min-w-[100px]"
           >
             Registrar
           </button>
@@ -2281,7 +2282,7 @@ Agradecemos a preferência.`;
       <button
         type="button"
         onClick={() => setModalConfirmarTurno(true)}
-        className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-sm uppercase rounded-xl transition-all shadow-lg"
+        className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-sm uppercase rounded-xl transition-all shadow-lg"
       >
         🗂️ Arquivar Turno e Zerar Contadores
       </button>
@@ -2289,7 +2290,7 @@ Agradecemos a preferência.`;
       <button
         type="button"
         onClick={() => setModalConfirmarApagarHistorico(true)}
-        className="w-full mt-3 py-3 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl font-black text-sm uppercase hover:bg-red-500/20 transition-all"
+        className="w-full mt-3 py-3.5 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl font-black text-sm uppercase hover:bg-red-500/20 transition-all"
       >
         🗑️ Apagar Histórico de Fechamentos
       </button>
@@ -2341,7 +2342,7 @@ Agradecemos a preferência.`;
                 </div>
 
                 {/* 4. TOTAL DESPESA - VOLTOU AO NORMAL */}
-                <div className="text-center p-2 bg-red-100 rounded-lg border border-red-200 col-span-2">
+                <div className="col-span-2 text-center p-2 bg-red-100 rounded-lg border border-red-200">
                   <p className="text-xs font-black text-red-800 uppercase mb-1">Total Despesa</p>
                   <p className="text-lg font-black text-red-900">
                     R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}
