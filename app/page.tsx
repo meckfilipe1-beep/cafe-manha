@@ -209,32 +209,14 @@ function validarTelefone(telefone: string): boolean {
   return apenasNumeros.startsWith("919") && apenasNumeros.length >= 9
 }
   // Verifica se loja está aberta
-  function verificarSeEstaAberto(dados: any) {
-    if (!lojaManualAberta) {
-      setLojaAberta(false)
-      return
-    }
-
-    const { diasFuncionamento, horaAbertura, horaFechamento } = dados
-    const diasSemana = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"]
-    const diaAtual = diasSemana[new Date().getDay()]
-
-    const diaFunciona = diasFuncionamento[diaAtual] === true
-    if (!diaFunciona) {
-      setLojaAberta(false)
-      return
-    }
-
-    const agora = new Date()
-    const [hAbre, mAbre] = horaAbertura.split(":").map(Number)
-    const [hFecha, mFecha] = horaFechamento.split(":").map(Number)
-
-    const abertura = new Date(); abertura.setHours(hAbre, mAbre, 0)
-    const fechamento = new Date(); fechamento.setHours(hFecha, mFecha, 0)
-
-    setLojaAberta(agora >= abertura && agora < fechamento)
+function verificarSeEstaAberto(dados: any) {
+  if (!lojaManualAberta) {
+    setLojaAberta(false)
+    return
   }
 
+  setLojaAberta(true)
+}
   // ✅ FUNÇÃO NOVA: Retorna apenas os dias que o admin LIBEROU PARA ENTREGA
   function diasPermitidosParaEntrega() {
     if (!dadosFuncionamento?.diasFuncionamento) return []
@@ -599,11 +581,11 @@ if (!validarTelefone(telefone)) {
           <div className="text-center select-none">
             <h1 className="text-2xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
             <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5"></p>
-            {dadosFuncionamento && (
-              <p className="text-base font-black text-orange-600 mt-2 tracking-wider">
-                ⏰ Entrega Hoje de {dadosFuncionamento.horaAbertura} às {dadosFuncionamento.horaFechamento}
-              </p>
-            )}
+          {diaEscolhido && (
+  <p className="text-base font-black text-orange-600 mt-2 tracking-wider">
+    📅 Entrega agendada para {diaEscolhido.nome}
+  </p>
+)}
           </div>
         </div>
       </header>
