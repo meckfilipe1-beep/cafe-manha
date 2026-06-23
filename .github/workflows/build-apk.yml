@@ -7,13 +7,13 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Baixar código
+      - name: Baixar código do repositório
         uses: actions/checkout@v6
 
-      - name: Configurar Node.js ✅ Agora versão 22
+      - name: Configurar Node.js v22
         uses: actions/setup-node@v6
         with:
-          node-version: '22'   # 🎯 Exatamente o que ele pede
+          node-version: '22'
           cache: 'npm'
 
       - name: Instalar dependências
@@ -22,25 +22,29 @@ jobs:
       - name: Instalar Capacitor
         run: npm install @capacitor/cli @capacitor/android @capacitor/local-notifications
 
-      - name: Preparar Android
-        run: |
-          npx cap add android || true
-          npx cap sync android
+      - name: 🧹 Remove pasta Android antiga para evitar conflitos
+        run: rm -rf ./android
 
-      - name: Configurar Java
+      - name: Adiciona plataforma Android nova
+        run: npx cap add android
+
+      - name: 📡 Sincroniza apenas configurações, sem arquivos locais
+        run: npx cap sync android --no-copy
+
+      - name: Configurar Java 17
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
           cache: gradle
 
-      - name: Permitir Gradle
+      - name: Permitir execução do Gradle
         run: chmod +x ./android/gradlew
 
       - name: Gerar APK
         run: cd android && ./gradlew assembleDebug
 
-      - name: Disponibilizar APK
+      - name: Disponibilizar APK para download
         uses: actions/upload-artifact@v5
         with:
           name: Tapicuz-Admin-APK
