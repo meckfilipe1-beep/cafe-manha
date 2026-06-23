@@ -1,9 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  swcMinify: false,               // 🚫 Desativa o SWC que está dando erro
-  experimental: {
-    forceSwcTransforms: false     // Força usar o compilador normal
-  }
+  output: 'export',          // ✅ Gera pasta "out"
+  images: { unoptimized: true }, // ✅ Necessário para exportação
+  trailingSlash: true,
+  swcMinify: false,
+  experimental: { forceSwcTransforms: false }
 };
 
 module.exports = nextConfig;
