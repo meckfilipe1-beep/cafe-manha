@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'out', // Pasta vazia só para não dar erro
 
   server: {
-    url: 'https://tapicuz-admin-gujb.vercel.app/admin',
+     url: 'https://tapicuz-admin-gujb.vercel.app',
     cleartext: true,
     androidScheme: 'https',
     allowNavigation: ['*'],
