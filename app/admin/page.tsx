@@ -14,73 +14,76 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
-// Configuração das notificações
+import { useEffect } from 'react';
+
+// ─────────────────────────────────────────
+// 🔔 CONFIGURAÇÃO DO CANAL DE NOTIFICAÇÃO
+// ─────────────────────────────────────────
 const configurarNotificacoes = async () => {
-  if (typeof window === "undefined" || !(window as any).Capacitor) return;
+  // Só executa dentro do app Capacitor
+  if (typeof window === "undefined" || !(window as any).Capacitor) return;[[__LINK_ICON]](https://capacitorjs.com/docs/v2/apis/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiJjNjBhMjZjMjkwMGYxOWViLTJmOTc0YzgwOTZjOWIyNmIifQ%3D%3D "[__LINK_ICON]")
 
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');
-    const permissao = await LocalNotifications.requestPermissions();
+    const { LocalNotifications } = await import('@capacitor/local-notifications');[[__LINK_ICON]](https://www.npmjs.com/package/@capacitor/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiIyZWI3NGVjMWVkZGUzNmExLTdiMDA5MDY0ZmUwMDcwNTcifQ%3D%3D "[__LINK_ICON]")
+    const permissao = await LocalNotifications.requestPermissions();[[__LINK_ICON]](https://github.com/ionic-team/capacitor-docs/blob/main/docs/apis/local-notifications.md?f_link_type=f_linkinlinenote&flow_extra=eyJkb2NfcG9zaXRpb24iOjAsImRvY19pZCI6ImYzMTc2ODU5MTNlMDJhNTItMDdiMzRjNTU4Yjc1NDI3ZCIsImlubGluZV9kaXNwbGF5X3Bvc2l0aW9uIjowfQ%3D%3D "[__LINK_ICON]")
     if (permissao.display !== 'granted') return;
 
+    // Cria canal com som e vibração
     await LocalNotifications.createChannel({
       id: 'pedidos-alta',
       name: 'Avisos de Pedido',
-      importance: 5,
-      visibility: 1,
+      importance: 5, // Máxima prioridade
+      visibility: 1, // Aparece na tela bloqueada
       sound: 'default',
-      vibration: true
+      vibration: true,
+      lights: true,
+      lightColor: '#F97316'
     });
   } catch (err) {
     console.log("Só funciona no app:", err);
   }
 };
 
-// Função que avisa quando chegar pedido
+// ─────────────────────────────────────────
+// 📢 FUNÇÃO QUE CHAMA QUANDO CHEGAR PEDIDO
+// ─────────────────────────────────────────
 const avisarNovoPedido = async () => {
   tocarSomPedido();
 
-  if (!(window as any).Capacitor) return;
+  if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const { LocalNotifications } = await import('@capacitor/local-notifications');[[__LINK_ICON]](https://www.npmjs.com/package/@capacitor/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJkb2NfaWQiOiIyZWI3NGVjMWVkZGUzNmExLTdiMDA5MDY0ZmUwMDcwNTciLCJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowfQ%3D%3D "[__LINK_ICON]")
     await LocalNotifications.schedule({
       notifications: [{
         title: "TAPICUZ DA SUL",
         body: "🔔 NOVO PEDIDO CHEGOU!",
         channelId: "pedidos-alta",
-        id: Date.now()
+        id: Date.now(),
+        smallIcon: "ic_stat_notification"
       }]
-    });
+    });[[__LINK_ICON]](https://capacitorjs.com/docs/v2/apis/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiJjNjBhMjZjMjkwMGYxOWViLTJmOTc0YzgwOTZjOWIyNmIifQ%3D%3D "[__LINK_ICON]")
   } catch (erro) {
     console.log("Aviso só no app:", erro);
   }
 };
 
-// Som do aviso
+// ─────────────────────────────────────────
+// 🔊 SOM PERSONALIZADO
+// ─────────────────────────────────────────
 function tocarSomPedido() {
   const audio = new Audio('/pedido.mp3');
+  audio.volume = 1;
   audio.play().catch(() => {});
 }
 
-// Chama a configuração uma vez ao abrir
+// ─────────────────────────────────────────
+// 🚀 INICIA QUANDO A PÁGINA CARREGA
+// ─────────────────────────────────────────
 useEffect(() => {
   configurarNotificacoes();
 }, []);
 
-// ✅ SOM PERSONALIZADO (CORRIGIDO PARA FUNCIONAR NO APP E NA WEB)
-function tocarSomPedido() {
-  const audio = new Audio('/pedido.mp3');
-  audio.volume = 1.0; // Volume máximo
-  audio.play().catch(err => {
-    console.log('Erro ao tocar áudio:', err);
-  });
-}
-
-// 🚀 NÃO ESQUEÇA DE CHAMAR A CONFIGURAÇÃO AO ABRIR O APP
-useEffect(() => {
-  configurarNotificacoes();
-}, []);
 
 // 🎨 CORES, LISTAS E O RESTO DO SEU CÓDIGO CONTINUAM IGUAL A ANTES
 const cores = {
