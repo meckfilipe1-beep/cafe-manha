@@ -14,7 +14,7 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
-// ⚙️ CONFIGURAÇÃO DO CANAL (AQUI VAI A VIBRAÇÃO, JÁ ESTÁ FEITO)
+// ⚙️ CONFIGURAÇÃO DO CANAL (VIBRAÇÃO E SOM DO SISTEMA)
 const configurarNotificacoes = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
@@ -26,10 +26,13 @@ const configurarNotificacoes = async () => {
     await LocalNotifications.createChannel({
       id: 'pedidos-alta',
       name: 'Avisos de Pedido',
-      importance: 5,
-      visibility: 1,
-      sound: 'default',
-      vibration: true, // ✅ VIBRAÇÃO AQUI, VALIDA PARA TODAS
+      description: 'Aviso quando chegar novo pedido',
+      importance: 5,       // Máxima prioridade
+      visibility: 1,       // Aparece na tela bloqueada
+      sound: 'default',    // Som padrão do sistema para a notificação
+      vibration: true,     // Vibra junto
+      lights: true,        // Acende a luz de notificação
+      lightColor: '#F97316'// Cor laranja da sua marca
     });
 
   } catch (err) {
@@ -37,8 +40,9 @@ const configurarNotificacoes = async () => {
   }
 };
 
-// 📢 FUNÇÃO DE AVISO SEM PROPRIEDADES ANTIGAS
+// 📢 FUNÇÃO DE AVISO
 const avisarNovoPedido = async () => {
+  // 🔊 Toca o seu som personalizado primeiro
   tocarSomPedido();
 
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
@@ -50,10 +54,9 @@ const avisarNovoPedido = async () => {
         {
           title: "TAPICUZ DA SUL",
           body: "🔔 NOVO PEDIDO CHEGOU!",
-          channelId: "pedidos-alta",
+          channelId: "pedidos-alta", // Usa o canal com som/vibração
           id: Date.now(),
-          sound: "default"
-          // ❌ REMOVIDO: lockscreen e vibrate — não existem mais aqui
+          smallIcon: "ic_stat_notification" // Ícone branco que vamos gerar
         }
       ]
     });
@@ -62,13 +65,19 @@ const avisarNovoPedido = async () => {
   }
 };
 
-// ✅ SOM DE NOTIFICAÇÃO (DEIXE EXATAMENTE ASSIM)
+// ✅ SOM PERSONALIZADO (CORRIGIDO PARA FUNCIONAR NO APP E NA WEB)
 function tocarSomPedido() {
   const audio = new Audio('/pedido.mp3');
+  audio.volume = 1.0; // Volume máximo
   audio.play().catch(err => {
     console.log('Erro ao tocar áudio:', err);
   });
 }
+
+// 🚀 NÃO ESQUEÇA DE CHAMAR A CONFIGURAÇÃO AO ABRIR O APP
+useEffect(() => {
+  configurarNotificacoes();
+}, []);
 
 // 🎨 CORES, LISTAS E O RESTO DO SEU CÓDIGO CONTINUAM IGUAL A ANTES
 const cores = {
