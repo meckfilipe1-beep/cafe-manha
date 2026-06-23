@@ -14,26 +14,23 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
-import { useEffect } from 'react';
 
 // ─────────────────────────────────────────
 // 🔔 CONFIGURAÇÃO DO CANAL DE NOTIFICAÇÃO
 // ─────────────────────────────────────────
 const configurarNotificacoes = async () => {
-  // Só executa dentro do app Capacitor
-  if (typeof window === "undefined" || !(window as any).Capacitor) return;[[__LINK_ICON]](https://capacitorjs.com/docs/v2/apis/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiJjNjBhMjZjMjkwMGYxOWViLTJmOTc0YzgwOTZjOWIyNmIifQ%3D%3D "[__LINK_ICON]")
+  if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');[[__LINK_ICON]](https://www.npmjs.com/package/@capacitor/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiIyZWI3NGVjMWVkZGUzNmExLTdiMDA5MDY0ZmUwMDcwNTcifQ%3D%3D "[__LINK_ICON]")
-    const permissao = await LocalNotifications.requestPermissions();[[__LINK_ICON]](https://github.com/ionic-team/capacitor-docs/blob/main/docs/apis/local-notifications.md?f_link_type=f_linkinlinenote&flow_extra=eyJkb2NfcG9zaXRpb24iOjAsImRvY19pZCI6ImYzMTc2ODU5MTNlMDJhNTItMDdiMzRjNTU4Yjc1NDI3ZCIsImlubGluZV9kaXNwbGF5X3Bvc2l0aW9uIjowfQ%3D%3D "[__LINK_ICON]")
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const permissao = await LocalNotifications.requestPermissions();
     if (permissao.display !== 'granted') return;
 
-    // Cria canal com som e vibração
     await LocalNotifications.createChannel({
       id: 'pedidos-alta',
       name: 'Avisos de Pedido',
-      importance: 5, // Máxima prioridade
-      visibility: 1, // Aparece na tela bloqueada
+      importance: 5,
+      visibility: 1,
       sound: 'default',
       vibration: true,
       lights: true,
@@ -45,7 +42,7 @@ const configurarNotificacoes = async () => {
 };
 
 // ─────────────────────────────────────────
-// 📢 FUNÇÃO QUE CHAMA QUANDO CHEGAR PEDIDO
+// 📢 FUNÇÃO DE AVISO
 // ─────────────────────────────────────────
 const avisarNovoPedido = async () => {
   tocarSomPedido();
@@ -53,7 +50,7 @@ const avisarNovoPedido = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');[[__LINK_ICON]](https://www.npmjs.com/package/@capacitor/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJkb2NfaWQiOiIyZWI3NGVjMWVkZGUzNmExLTdiMDA5MDY0ZmUwMDcwNTciLCJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowfQ%3D%3D "[__LINK_ICON]")
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
     await LocalNotifications.schedule({
       notifications: [{
         title: "TAPICUZ DA SUL",
@@ -62,7 +59,7 @@ const avisarNovoPedido = async () => {
         id: Date.now(),
         smallIcon: "ic_stat_notification"
       }]
-    });[[__LINK_ICON]](https://capacitorjs.com/docs/v2/apis/local-notifications?f_link_type=f_linkinlinenote&flow_extra=eyJpbmxpbmVfZGlzcGxheV9wb3NpdGlvbiI6MCwiZG9jX3Bvc2l0aW9uIjowLCJkb2NfaWQiOiJjNjBhMjZjMjkwMGYxOWViLTJmOTc0YzgwOTZjOWIyNmIifQ%3D%3D "[__LINK_ICON]")
+    });
   } catch (erro) {
     console.log("Aviso só no app:", erro);
   }
@@ -78,12 +75,22 @@ function tocarSomPedido() {
 }
 
 // ─────────────────────────────────────────
-// 🚀 INICIA QUANDO A PÁGINA CARREGA
+// 🚀 COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────
-useEffect(() => {
-  configurarNotificacoes();
-}, []);
+export default function AdminPainel() {
 
+  // ✅ useEffect AGORA DENTRO DO COMPONENTE
+  useEffect(() => {
+    configurarNotificacoes();
+  }, []);
+
+  // AQUI FICA TODO O RESTO DO SEU CÓDIGO, FIREBASE, TELAS, ETC...
+  return (
+    <div>
+      {/* Seu conteúdo do painel aqui */}
+    </div>
+  );
+}
 
 // 🎨 CORES, LISTAS E O RESTO DO SEU CÓDIGO CONTINUAM IGUAL A ANTES
 const cores = {
