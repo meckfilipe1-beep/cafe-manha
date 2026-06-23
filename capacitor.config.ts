@@ -3,20 +3,21 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.tapicuz.admin',
   appName: 'Tapicuz da Sul',
-  webDir: 'out',
+  webDir: 'out', // Deixa definido, mas não vai usar arquivos daqui
   server: {
-    url: 'https://tapicuz-admin-gujb.vercel.app/admin',
+    url: 'https://tapicuz-admin-gujb.vercel.app/admin', // ✅ Aponta direto para o seu site
     cleartext: false,
     androidScheme: 'https',
-    allowNavigation: ['*']
+    allowNavigation: ['*'] // ✅ Libera carregar tudo
   },
   android: {
-    allowMixedContent: true
+    allowMixedContent: true,
+    backgroundColor: '#FFFFFF' // ✅ Cor de fundo enquanto carrega
   },
   plugins: {
     LocalNotifications: {
-      smallIcon: "ic_stat_notification", // O sistema vai usar a versão branca
-      iconColor: "#F97316" // Cor laranja para ficar igual sua marca
+      smallIcon: "ic_stat_notification",
+      iconColor: "#F97316"
     }
   }
 };
