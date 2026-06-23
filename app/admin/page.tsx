@@ -14,10 +14,7 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
-
-// ─────────────────────────────────────────
-// 🔔 CONFIGURAÇÃO DO CANAL DE NOTIFICAÇÃO
-// ─────────────────────────────────────────
+// ⚙️ CONFIGURAÇÃO DO CANAL (AQUI VAI A VIBRAÇÃO, JÁ ESTÁ FEITO)
 const configurarNotificacoes = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
@@ -32,18 +29,15 @@ const configurarNotificacoes = async () => {
       importance: 5,
       visibility: 1,
       sound: 'default',
-      vibration: true,
-      lights: true,
-      lightColor: '#F97316'
+      vibration: true, // ✅ VIBRAÇÃO AQUI, VALIDA PARA TODAS
     });
+
   } catch (err) {
     console.log("Só funciona no app:", err);
   }
 };
 
-// ─────────────────────────────────────────
-// 📢 FUNÇÃO DE AVISO
-// ─────────────────────────────────────────
+// 📢 FUNÇÃO DE AVISO SEM PROPRIEDADES ANTIGAS
 const avisarNovoPedido = async () => {
   tocarSomPedido();
 
@@ -52,44 +46,28 @@ const avisarNovoPedido = async () => {
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications');
     await LocalNotifications.schedule({
-      notifications: [{
-        title: "TAPICUZ DA SUL",
-        body: "🔔 NOVO PEDIDO CHEGOU!",
-        channelId: "pedidos-alta",
-        id: Date.now(),
-        smallIcon: "ic_stat_notification"
-      }]
+      notifications: [
+        {
+          title: "TAPICUZ DA SUL",
+          body: "🔔 NOVO PEDIDO CHEGOU!",
+          channelId: "pedidos-alta",
+          id: Date.now(),
+          sound: "default"
+          // ❌ REMOVIDO: lockscreen e vibrate — não existem mais aqui
+        }
+      ]
     });
   } catch (erro) {
-    console.log("Aviso só no app:", erro);
+    console.log("Erro notificação:", erro);
   }
 };
 
-// ─────────────────────────────────────────
-// 🔊 SOM PERSONALIZADO
-// ─────────────────────────────────────────
+// ✅ SOM DE NOTIFICAÇÃO (DEIXE EXATAMENTE ASSIM)
 function tocarSomPedido() {
   const audio = new Audio('/pedido.mp3');
-  audio.volume = 1;
-  audio.play().catch(() => {});
-}
-
-// ─────────────────────────────────────────
-// 🚀 COMPONENTE PRINCIPAL
-// ─────────────────────────────────────────
-export default function AdminPainel() {
-
-  // ✅ useEffect AGORA DENTRO DO COMPONENTE
-  useEffect(() => {
-    configurarNotificacoes();
-  }, []);
-
-  // AQUI FICA TODO O RESTO DO SEU CÓDIGO, FIREBASE, TELAS, ETC...
-  return (
-    <div>
-      {/* Seu conteúdo do painel aqui */}
-    </div>
-  );
+  audio.play().catch(err => {
+    console.log('Erro ao tocar áudio:', err);
+  });
 }
 
 // 🎨 CORES, LISTAS E O RESTO DO SEU CÓDIGO CONTINUAM IGUAL A ANTES
