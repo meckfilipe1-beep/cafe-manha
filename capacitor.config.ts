@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const config: CapacitorConfig = { 
+const config: CapacitorConfig = {
   appId: 'com.tapicuz.admin',
   appName: 'Tapicuz Admin',
   webDir: 'out',
