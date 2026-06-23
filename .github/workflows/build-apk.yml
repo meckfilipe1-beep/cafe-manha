@@ -10,19 +10,19 @@ jobs:
       - name: Baixar código
         uses: actions/checkout@v6
 
-      - name: Configurar Node.js
+      - name: Configurar Node.js ✅ Agora versão 22
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: '22'   # 🎯 Exatamente o que ele pede
           cache: 'npm'
 
       - name: Instalar dependências
         run: npm ci
 
-      - name: Instalar ferramentas do Capacitor
+      - name: Instalar Capacitor
         run: npm install @capacitor/cli @capacitor/android @capacitor/local-notifications
 
-      - name: Preparar projeto Android
+      - name: Preparar Android
         run: |
           npx cap add android || true
           npx cap sync android
@@ -34,13 +34,13 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Permitir execução do Gradle
+      - name: Permitir Gradle
         run: chmod +x ./android/gradlew
 
       - name: Gerar APK
         run: cd android && ./gradlew assembleDebug
 
-      - name: Disponibilizar para download
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v5
         with:
           name: Tapicuz-Admin-APK
