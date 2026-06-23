@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.tapicuz.admin',
   appName: 'Tapicuz Admin',
-  webDir: 'out', // pasta vazia que criamos
+  webDir: 'out',
   server: {
     url: 'https://tapicuz-admin-gujb.vercel.app/admin',
     cleartext: false,

@@ -10,47 +10,44 @@ jobs:
       - name: Baixar código
         uses: actions/checkout@v6
 
-      - name: Usar Node.js 22
+      - name: Usar Node.js 22 (exigido pelo Capacitor 8)
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
 
-      - name: Instalar tudo
+      - name: Instalar dependências
         run: npm ci
 
       - name: Instalar Capacitor
         run: npm install @capacitor/cli @capacitor/android @capacitor/local-notifications
 
-      - name: 🧹 Apaga Android antigo
+      - name: 🧹 Apaga pasta Android antiga
         run: rm -rf ./android
 
-      - name: Cria pasta vazia para enganar o copy
+      - name: Cria pasta vazia para evitar erro de webDir
         run: mkdir -p ./out
 
-      - name: Adiciona Android
+      - name: Adiciona plataforma Android
         run: npx cap add android
 
-      - name: ✅ Agora copia sem erro
-        run: npx cap copy android || true
+      - name: Sincroniza configurações
+        run: npx cap sync android
 
-      - name: ✅ Atualiza apenas nativos/plugins
-        run: npx cap update android
-
-      - name: Java 17
+      - name: ✅ Configura JAVA 21 (exigido pelo Capacitor 8)
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
-      - name: Permissões Gradle
+      - name: Permite execução do Gradle
         run: chmod +x ./android/gradlew
 
-      - name: Monta APK
+      - name: Gera APK
         run: cd android && ./gradlew assembleDebug
 
-      - name: Disponibiliza
+      - name: Disponibiliza para download
         uses: actions/upload-artifact@v5
         with:
           name: Tapicuz-Admin-APK
