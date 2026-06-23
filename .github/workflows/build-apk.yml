@@ -1,0 +1,31 @@
+name: Gerar APK Automaticamente
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Gerar APK
+        run: cd android && ./gradlew assembleRelease
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: TapicuzDaSul-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
