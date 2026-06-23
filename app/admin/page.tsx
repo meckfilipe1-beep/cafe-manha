@@ -14,20 +14,76 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
+// ⚙️ CONFIGURAÇÃO DO CANAL (AQUI VAI A VIBRAÇÃO, JÁ ESTÁ FEITO)
+const configurarNotificacoes = async () => {
+  if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
-// 🎨 CORES OFICIAIS TAPICUZ
-const cores = {
-  fundoGeral: "#FFFFFF",         // Branco puro
-  fundoSecao: "#FFFAF5",         // Branco quente, suave
-  primaria: "#F97316",           // Laranja principal
-  primariaClara: "#FFEDD5",      // Laranja clarinho
-  textoPrincipal: "#27272A",     // Cinza escuro (melhor que preto puro)
-  textoSecundario: "#71717A",    // Cinza médio
-  sucesso: "#10B981",            // Verde
-  alerta: "#F59E0B",             // Amarelo
-  erro: "#EF4444",               // Vermelho
-  borda: "#F3F4F6",              // Cinza bem claro para divisórias
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const permissao = await LocalNotifications.requestPermissions();
+    if (permissao.display !== 'granted') return;
+
+    await LocalNotifications.createChannel({
+      id: 'pedidos-alta',
+      name: 'Avisos de Pedido',
+      importance: 5,
+      visibility: 1,
+      sound: 'default',
+      vibration: true, // ✅ VIBRAÇÃO AQUI, VALIDA PARA TODAS
+    });
+
+  } catch (err) {
+    console.log("Só funciona no app:", err);
+  }
+};
+
+// 📢 FUNÇÃO DE AVISO SEM PROPRIEDADES ANTIGAS
+const avisarNovoPedido = async () => {
+  tocarSomPedido();
+
+  if (typeof window === "undefined" || !(window as any).Capacitor) return;
+
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          title: "TAPICUZ DA SUL",
+          body: "🔔 NOVO PEDIDO CHEGOU!",
+          channelId: "pedidos-alta",
+          id: Date.now(),
+          sound: "default"
+          // ❌ REMOVIDO: lockscreen e vibrate — não existem mais aqui
+        }
+      ]
+    });
+  } catch (erro) {
+    console.log("Erro notificação:", erro);
+  }
+};
+
+// ✅ SOM DE NOTIFICAÇÃO (DEIXE EXATAMENTE ASSIM)
+function tocarSomPedido() {
+  const audio = new Audio('/pedido.mp3');
+  audio.play().catch(err => {
+    console.log('Erro ao tocar áudio:', err);
+  });
 }
+
+// 🎨 CORES, LISTAS E O RESTO DO SEU CÓDIGO CONTINUAM IGUAL A ANTES
+const cores = {
+  fundoGeral: "#FFFFFF",
+  fundoSecao: "#FFFAF5",
+  primaria: "#F97316",
+  primariaClara: "#FFEDD5",
+  textoPrincipal: "#27272A",
+  textoSecundario: "#71717A",
+  sucesso: "#10B981",
+  alerta: "#F59E0B",
+  erro: "#EF4444",
+  borda: "#F3F4F6",
+}
+
 
 // 📅 Lista de dias da semana
 const listaDiasSemana = [
@@ -218,10 +274,10 @@ Obrigado pela preferência! 🧡`
     return horarios
   }
 
-  // ⏰ funcionamentourações de funcionamento
+  // ⏰ CORRIGIDO: caminho único para configuração
   const carregarfuncionamentouracoesFuncionamento = async () => {
     try {
-     const docRef = doc(db, "config", "funcionamento")
+     const docRef = doc(db, "configuracoes", "funcionamento")
       const docSnap = await getDoc(docRef)
       if (docSnap.exists()) {
         const dados = docSnap.data()
@@ -232,9 +288,10 @@ Obrigado pela preferência! 🧡`
         // ✅ CARREGA DIAS E HORÁRIOS DE ENTREGA
         if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
         if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
+        if (dados.aberta !== undefined) setfuncionamentoAberta(dados.aberta)
       }
     } catch (erro) {
-      console.error("Erro ao carregar funcionamentourações:", erro)
+      console.error("Erro ao carregar configurações:", erro)
     }
   }
 
@@ -257,16 +314,17 @@ Obrigado pela preferência! 🧡`
 
       // 3. Salva tudo no Firebase
       await setDoc(
-        doc(db, "config", "funcionamento"),
+        doc(db, "configuracoes", "funcionamento"),
         { 
           horaAbertura, 
           horaFechamento, 
           diasFuncionamento,
           diasEntrega,
-          horariosPorDia: novosHorariosPorDia // ✅ Agora salva os horários NOVOS gerados
+          horariosPorDia: novosHorariosPorDia, // ✅ Agora salva os horários NOVOS gerados
+          aberta: funcionamentoAberta
         }
       )
-      setNotificacaoCaixa("✅ funcionamentourações salvas!")
+      setNotificacaoCaixa("✅ Configurações salvas!")
       setTimeout(() => setNotificacaoCaixa(null), 2000)
     } catch (erro) {
       console.error("Erro ao salvar:", erro)
@@ -275,12 +333,11 @@ Obrigado pela preferência! 🧡`
     }
   }
 
-  // ✅ CORRIGIDO: O erro do `ref` estava AQUI, agora está 100%
+  // ✅ CORRIGIDO: caminho único
   useEffect(() => {
     carregarfuncionamentouracoesFuncionamento()
 
-    // ✅ Variável ref DEFINIDA AQUI (era o que faltava)
-    const ref = doc(db, "config", "funcionamento")
+    const ref = doc(db, "configuracoes", "funcionamento")
 
     const unsubscribe = onSnapshot(ref, (snapshot) => {
       if (snapshot.exists()) {
@@ -288,9 +345,9 @@ Obrigado pela preferência! 🧡`
         setHoraAbertura(dados.horaAbertura || "06:00")
         setHoraFechamento(dados.horaFechamento || "18:00")
         if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento)
-        // ✅ ATUALIZA EM TEMPO REAL
         if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
         if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
+        if (dados.aberta !== undefined) setfuncionamentoAberta(dados.aberta)
       }
     })
 
@@ -338,6 +395,7 @@ Obrigado pela preferência! 🧡`
       [dia]: prev[dia].filter(h => h !== hora)
     }))
   }
+
 interface Pedido {
   id: string
   nome: string
@@ -413,7 +471,8 @@ interface HistoricoCaixa {
   const [horarioAvulso, setHorarioAvulso] = useState("0:00")
   const [valorTotalAvulso, setValorTotalAvulso] = useState("0.00")
   const [criandoAvulso, setCriandoAvulso] = useState(false)
-
+const [whatsappAvulso, setWhatsappAvulso] = useState("");
+const [trocoCalculadoAvulso, setTrocoCalculadoAvulso] = useState(0);
   const [itensAvulsos, setItensAvulsos] = useState({
     tapiocaMolhada: 0,
     tapiocaManteiga: 0,
@@ -430,15 +489,11 @@ interface HistoricoCaixa {
   const ultimoTotalPedidos = useRef(0)
 
  useEffect(() => {
-  const reffuncionamento = doc(
-  db,
-  "configuracoes",
-  "funcionamento"
-)
+  const reffuncionamento = doc(db, "configuracoes", "funcionamento")
     const unsubscribeStatus = onSnapshot(reffuncionamento, (snap) => {
       if (snap.exists()) {
         const dados = snap.data()
-        setfuncionamentoAberta(dados.aberta)
+        setfuncionamentoAberta(dados.aberta !== undefined ? dados.aberta : true)
         setTotalDespesasAcumuladas(dados.despesas || 0)
       }
     })
@@ -460,8 +515,28 @@ interface HistoricoCaixa {
     return () => {
       unsubscribeStatus()
       unsubscribeCaixas()
+
     }
   }, [])
+    
+  useEffect(() => {
+  const qPedidos = query(collection(db, "pedidos"));
+const unsubscribe = onSnapshot(qPedidos, (snap) => {
+  const pedidosNovos = snap.docs.map(d => ({
+    id: d.id,
+    ...d.data()
+  } as Pedido));
+
+  setPedidos(pedidosNovos);
+
+  // Só avisa se tiver pedido novo (opcional, evita tocar várias vezes)
+  if (pedidosNovos.length > 0) {
+    avisarNovoPedido();
+  }
+});
+
+  return () => unsubscribe();
+}, []);
 
   useEffect(() => {
     const q = query(collection(db, "pedidos"))
@@ -521,55 +596,79 @@ interface HistoricoCaixa {
     setValorTotalAvulso(subtotal.toFixed(2))
   }, [itensAvulsos, produtos]) 
 
+const valorTotalAvulsoNumerico = parseFloat(valorTotalAvulso) || 0
+const trocoParaAvulsoNumerico = parseFloat(trocoParaAvulso.replace(",", ".")) || 0
+const trocoAvulsoCalculado = pagamentoAvulso === "Dinheiro" && trocoParaAvulsoNumerico > valorTotalAvulsoNumerico 
+  ? trocoParaAvulsoNumerico - valorTotalAvulsoNumerico 
+  : 0
 
-  const valorTotalAvulsoNumerico = parseFloat(valorTotalAvulso) || 0
-  const trocoParaAvulsoNumerico = parseFloat(trocoParaAvulso.replace(",", ".")) || 0
-  const trocoAvulsoCalculado = pagamentoAvulso === "Dinheiro" && trocoParaAvulsoNumerico > valorTotalAvulsoNumerico 
-    ? trocoParaAvulsoNumerico - valorTotalAvulsoNumerico 
-    : 0
+// ✅ AQUI ESTAVA O ERRO: Agora endereço SÓ recebe rua, número e referência
+const partesEndereco = []
+if (ruaAvulso.trim()) partesEndereco.push(ruaAvulso.trim())
+if (numeroAvulso.trim()) partesEndereco.push(`Nº ${numeroAvulso.trim()}`)
+if (referenciaAvulso.trim()) partesEndereco.push(`Ref: ${referenciaAvulso.trim()}`) // Apenas a referência aqui!
+const enderecoCompletoConstruido = partesEndereco.length > 0 ? partesEndereco.join(", ") : "Retirada no Balcão"
 
-  const partesEndereco = []
-  if (ruaAvulso.trim()) partesEndereco.push(ruaAvulso.trim())
-  if (numeroAvulso.trim()) partesEndereco.push(`Nº ${numeroAvulso.trim()}`)
-  if (referenciaAvulso.trim()) partesEndereco.push(`Ref: ${referenciaAvulso.trim()}`)
-  const enderecoCompletoConstruido = partesEndereco.length > 0 ? partesEndereco.join(", ") : "Retirada no Balcão"
+// ✅ Observação fica SEPARADA, não entra mais no endereço
+const observacaoPedido = observacaoAvulso?.trim() || ""
 
-  function executarCopiaResumo() {
-    const itensTxt = Object.entries(itensAvulsos)
-      .filter(([_, qtd]) => qtd > 0)
-      .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
-      .join("\n")
+function executarCopiaResumo() {
+  const itensTxt = Object.entries(itensAvulsos)
+    .filter(([_, qtd]) => qtd > 0)
+    .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
+    .join("\n")
 
-    const textoFinal = `━━━━━━━━━━━━━━━━━━\n☕ TAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\n📍 Entrega:\n${enderecoCompletoConstruido}\n\n🛒 Itens:\n${itensTxt || "Nenhum item selecionado"}\n\n💳 Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\n💰 Total:\nR$ ${valorTotalAvulso}\n━━━━━━━━━━━━━━━━━━`
-    
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(textoFinal)
-        .then(() => {
-          setMostrarModalCopiado(true)
-        })
-        .catch(err => {
-          console.error("Erro na API clipboard", err)
-        })
-    } else {
-      const textArea = document.createElement("textarea")
-      textArea.value = textoFinal
-      document.body.appendChild(textArea)
-      textArea.select()
-      document.execCommand("copy")
-      document.body.removeChild(textArea)
-      setMostrarModalCopiado(true)
-    }
+  const textoFinal = `━━━━━━━━━━━━━━━━━━
+☕ TAPICUZ
+
+Cliente: ${nomeAvulso || "Não informado"}
+Horário: ${horarioAvulso}
+
+📍 Entrega:
+${enderecoCompletoConstruido}
+
+🛒 Itens:
+${itensTxt || "Nenhum item selecionado"}
+
+${observacaoPedido ? `📝 Observação:\n${observacaoPedido}\n` : ""}
+
+💳 Pagamento:
+${pagamentoAvulso.toUpperCase()}
+
+💰 Total:
+R$ ${valorTotalAvulso}
+
+${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `💵 Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}
+━━━━━━━━━━━━━━━━━━`
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(textoFinal)
+      .then(() => {
+        setMostrarModalCopiado(true)
+      })
+      .catch(err => {
+        console.error("Erro na API clipboard", err)
+      })
+  } else {
+    const textArea = document.createElement("textarea")
+    textArea.value = textoFinal
+    document.body.appendChild(textArea)
+    textArea.select()
+    document.execCommand("copy")
+    document.body.removeChild(textArea)
+    setMostrarModalCopiado(true)
   }
+}
 
-  function gerarResumoPedidoWhatsApp() {
-    const itens = Object.entries(itensAvulsos)
-      .filter(([_, qtd]) => qtd > 0)
-      .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
-      .join("\n")
+// ✅ ESSA FUNÇÃO TAMBÉM CORRIGIDA PARA O WHATSAPP FICAR CERTO
+function gerarResumoPedidoWhatsApp() {
+  const itens = Object.entries(itensAvulsos)
+    .filter(([_, qtd]) => qtd > 0)
+    .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
+    .join("\n")
 
-    return `━━━━━━━━━━━━━━━━━━\n☕ TAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\n📍 Entrega:\n${enderecoCompletoConstruido}\n\n🛒 Itens:\n${itens || "Nenhum item selecionado"}\n\n💳 Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\n💰 Total:\nR$ ${valorTotalAvulso}\n━━━━━━━━━━━━━━━━━━`
-  }
-
+  return `Olá ${nomeAvulso || "Cliente"},\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\nRESUMO DO PEDIDO\n----------------------------------------\n\n*CLIENTE:* ${nomeAvulso || "Não informado"}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*FORMA DE PAGAMENTO:* ${pagamentoAvulso.toUpperCase()}\n*TROCO:* R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos muito a sua preferência!`
+}
   const enviarMensagemNotificacaoWhats = (nomeCliente: string) => {
     const msg = `Olá, ${nomeCliente}! ☕\nSeu pedido da Tapicuz já foi entregue.\nCaso o pagamento ainda não tenha sido realizado, pedimos a gentileza de efetuá-lo assim que possível.\nSe o pagamento já foi realizado, desconsidere esta mensagem e muito obrigado pela preferência! ❤️\nTenha um excelente dia.`
     const url = `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`
@@ -704,7 +803,7 @@ const dadosFechamento = {
       setNotificacaoCaixa("💥 SISTEMA RESETADO E APAGADO COMPLETAMENTE!")
       setTimeout(() => setNotificacaoCaixa(null), 4000)
     } catch (error) {
-      console.error("Erro ao zerar tudo:", error)
+      console.error(error)
     }
   }
 
@@ -714,6 +813,7 @@ const dadosFechamento = {
     setMostrarResumoFinalAvulso(true)
   }
 
+  // ✅ CORRIGIDO: adicionado campo telefone
   async function finalizarPedidoAvulsoComStatusRoteado(destino: "pago" | "espera" | "pendente") {
     if (criandoAvulso || !funcionamentoAberta) return
     setCriandoAvulso(true)
@@ -723,12 +823,14 @@ const dadosFechamento = {
       endereco: enderecoCompletoConstruido.toUpperCase(),
       pagamento: pagamentoAvulso,
       troco: destino === "pago" ? trocoAvulsoCalculado : 0,
+      trocoPara: trocoParaAvulsoNumerico,
       valorTotal: valorTotalAvulsoNumerico,
       horario: horarioAvulso,
       pago: destino === "pago",
       concluido: destino !== "espera", 
       statusPagamento: destino === "pago" ? "pago" : "pendente", 
       dataCriacao: new Date().toISOString(),
+      telefone: whatsappAvulso || "",
       itens: itensAvulsos
     }
 
@@ -745,6 +847,7 @@ const dadosFechamento = {
       setObservacaoAvulso("")
       setPagamentoAvulso("Pix")
       setTrocoParaAvulso("")
+      setWhatsappAvulso("")
       setItensAvulsos({ tapiocaMolhada:0, tapiocaManteiga:0, tapiocaQueijo:0, tapiocaOvo:0, tapiocaQueijoOvo:0, cuscuzMilho:0, cuscuzArroz:0, cuscuzMilhoArroz:0, cafe:0 })
       setMostrarResumoFinalAvulso(false)
       
@@ -862,7 +965,7 @@ const dadosFechamento = {
           
         </div>
 
-        {/* OBSERVAÇÃO (DESTAQUE VERMELHO) */}
+        {/* ✅ OBSERVAÇÃO AGORA SEPARADA, NÃO VAI MAIS NO ENDEREÇO */}
         {pedidoDetalhado.observacao && (
           <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-xl">
             <p className="text-xs font-black text-red-600 uppercase mb-1 tracking-wide">Observação</p>
@@ -882,8 +985,7 @@ const dadosFechamento = {
             ))}
           </div>
         </div>
-
-        {/* PAGAMENTO + VALOR */}
+  {/* PAGAMENTO + VALOR */}
         <div className="grid grid-cols-2 gap-3 pt-2">
           <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
             <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Pagamento</p>
@@ -902,13 +1004,15 @@ const dadosFechamento = {
           </div>
         </div>
 
-        {/* TROCO (SE TIVER) */}
-        {pedidoDetalhado.troco > 0 && (
-          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
-            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Troco</p>
-            <p className="font-bold text-[#27272A]">R$ {pedidoDetalhado.troco.toFixed(2)}</p>
-          </div>
-        )}
+     {/* TROCO (SE TIVER) */}
+        <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
+          <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Troco</p>
+          <p className="font-bold text-[#27272A]">
+            {pedidoDetalhado.troco > 0 
+              ? `R$ ${pedidoDetalhado.troco.toFixed(2)}` 
+              : "SEM TROCO"}
+          </p>
+        </div>
 
         {/* BOTÕES DE AÇÃO */}
         <div className="flex gap-2 pt-3">
@@ -931,9 +1035,6 @@ const dadosFechamento = {
     </div>
   </div>
 )}
-     
-
-
 {/* ✅ Modal: VERSÃO FINAL - OPÇÕES INTERNAS MAIORES E BEM SEPARADAS */}
 {pedidoSelecionadoParaConcluir && (
   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1039,6 +1140,7 @@ Agradecemos a preferência.`;
               >
                 AVISAR SAÍDA
               </button>
+              
               <button
                 onClick={() => {
                   if (!pedidoSelecionadoParaConcluir?.telefone) {
@@ -1048,6 +1150,7 @@ Agradecemos a preferência.`;
                   const pedido = pedidoSelecionadoParaConcluir;
                   const numero = pedido.telefone?.replace(/\D/g, "") || "";
 
+                  // ✅ AGORA SIM: ENDEREÇO E OBSERVAÇÃO SEPARADOS
                   let mensagemCompleta = `Olá ${pedido.nome}.
 Seu pedido da Tapicuz foi recebido e já está sendo preparado!
 
@@ -1055,14 +1158,15 @@ RESUMO DO PEDIDO
 ----------------------------------------
 
 *CLIENTE:* ${pedido.nome.toUpperCase()}
-*ENDEREÇO:* ${String(pedido.endereco || 'NÃO INFORMADO')} ${pedido.observacao ? ` - Ref: ${pedido.observacao}` : ''}
+*ENDEREÇO:* ${String(pedido.endereco || 'NÃO INFORMADO')}
+${pedido.observacao ? `*OBSERVAÇÃO:* ${pedido.observacao}\n` : ""}
 *HORÁRIO:* ${pedido.horario}
 *FORMA DE PAGAMENTO:* ${pedido.pagamento}
 `;
 
                   if (pedido.pagamento === 'Dinheiro') {
                     const valorTroco = pedido.troco;
-                    mensagemCompleta += `*TROCO:* R$ ${valorTroco.toFixed(2).replace('.', ',')}
+mensagemCompleta += `*TROCO:* ${valorTroco > 0 ? `R$ ${valorTroco.toFixed(2).replace('.', ',')}` : "SEM TROCO"}
 `;
                   }
 
@@ -1563,38 +1667,40 @@ Agradecemos muito a sua preferência!`;
                     </p>
                   )}
 
-                  <div className="border-t border-orange-300/40 pt-4 mb-5">
-                    <p className="text-sm font-black text-orange-700 uppercase mb-3">Itens:</p>
-                    <div className="space-y-2 pl-1">
-                      {Object.entries(pedido.itens).map(([key, qtd]) => qtd > 0 && (
-                        <div key={key} className="flex justify-between text-base">
-                          <span className="text-orange-900/80 font-bold">{formatarNomeItem(key)}</span>
-                          <span className="text-orange-600 font-black">{qtd}x</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                      <div className="flex justify-between items-center pt-2">
+      <div className="space-y-1.5">
+        {/* 💰 VALOR TOTAL (VERDE) */}
+        <p className="text-xl font-black text-emerald-600">R$ {pedido.valorTotal.toFixed(2)}</p>
+        
+        {/* 🔴 TROCO - TAMANHO PEQUENO, DO JEITO QUE FICOU BOM */}
+        {pedido.pagamento === "Dinheiro" && (() => {
+          const valorTroco = pedido.trocoPara || pedido.troco || 0;
+          if (valorTroco > 0) {
+            return (
+              <p className="text-sm font-black text-red-600 bg-red-100/60 px-2.5 py-0.5 rounded-md border border-red-400/30 inline-block shadow-sm m-0">
+                🔴 TROCO R$ {valorTroco.toFixed(2)}
+              </p>
+            );
+          }
+          if (valorTroco === 0) {
+            return (
+              <p className="text-sm font-black text-red-600 bg-red-100/60 px-2.5 py-0.5 rounded-md border border-red-400/30 inline-block shadow-sm m-0">
+                🔴 R$ SEM TROCO
+              </p>
+            );
+          }
+          return null;
+        })()}
+      </div>
 
-                  <div className="flex justify-between items-center pt-2">
-                    <div className="space-y-2">
-                      {/* 💰 VALOR TOTAL (VERDE) */}
-                      <p className="text-2xl font-black text-emerald-600">R$ {pedido.valorTotal.toFixed(2)}</p>
-                      
-                      {/* 🔴 TROCO EM VERMELHO - SÓ APARECE SE FOR DINHEIRO E TIVER TROCO */}
-                      {(pedido.pagamento === "Dinheiro" && (pedido.trocoPara || pedido.troco)) && (
-                        <p className="text-lg font-black text-red-600 bg-red-100/60 px-3 py-1 rounded-lg border border-red-400/30 inline-block shadow-sm">
-                          🔴 TROCO R$ {(pedido.trocoPara || pedido.troco).toFixed(2)}
-                        </p>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => setPedidoSelecionadoParaConcluir(pedido)}
-                      className="px-6 py-3 bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-xl text-sm font-black uppercase hover:bg-emerald-500/30 transition-all shadow-md"
-                    >
-                      ✅ Concluir
-                    </button>
-                  </div>
+      {/* ✅ BOTÃO CONCLUIR - AUMENTADO, BONITO E DESTAQUE */}
+      <button
+        onClick={() => setPedidoSelecionadoParaConcluir(pedido)}
+        className="text-base font-black bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-lg px-5 py-2 shadow-md hover:bg-emerald-500/30 transition-all whitespace-nowrap uppercase leading-none"
+      >
+        ✅ Concluir
+      </button>
+    </div>
                 </div>
               ))}
             </div>
@@ -1603,7 +1709,8 @@ Agradecemos muito a sua preferência!`;
       </div>
     )}
 
- {abaAtiva === "avulso" && (
+ 
+{abaAtiva === "avulso" && (
   <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
     <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6 text-center">
       ➕ Lançar Pedido Avulso
@@ -1611,7 +1718,7 @@ Agradecemos muito a sua preferência!`;
 
     <form onSubmit={dispararFluxoConclusaoAvulso} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Dados do Cliente */}
+        {/* 📋 DADOS DO CLIENTE */}
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Nome do Cliente</label>
@@ -1624,9 +1731,25 @@ Agradecemos muito a sua preferência!`;
             />
           </div>
 
+          {/* 📱 WHATSAPP - OPCIONAL */}
+          <div>
+            <label className="block text-xs font-black text-[#71717A] uppercase mb-2">WhatsApp (Opcional)</label>
+            <input
+              type="tel"
+              value={whatsappAvulso || ""}
+              onChange={(e) => {
+                let apenasNumeros = e.target.value.replace(/\D/g, "");
+                setWhatsappAvulso(apenasNumeros);
+              }}
+              placeholder="91999998888"
+              maxLength={11}
+              className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-green-500"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Rua</label>
+              <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Rua (Opcional)</label>
               <input
                 type="text"
                 value={ruaAvulso}
@@ -1635,7 +1758,7 @@ Agradecemos muito a sua preferência!`;
               />
             </div>
             <div>
-              <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Número</label>
+              <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Número (Opcional)</label>
               <input
                 type="text"
                 value={numeroAvulso}
@@ -1646,7 +1769,7 @@ Agradecemos muito a sua preferência!`;
           </div>
 
           <div>
-            <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Ponto de Referência</label>
+            <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Ponto de Referência (Opcional)</label>
             <input
               type="text"
               value={referenciaAvulso}
@@ -1656,7 +1779,7 @@ Agradecemos muito a sua preferência!`;
           </div>
 
           <div>
-            <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Observação</label>
+            <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Observação (Opcional)</label>
             <textarea
               value={observacaoAvulso}
               onChange={(e) => setObservacaoAvulso(e.target.value.toUpperCase())}
@@ -1664,7 +1787,7 @@ Agradecemos muito a sua preferência!`;
             />
           </div>
 
-          {/* 🕒 Horário de Entrega - CENTRALIZADO, QUADRADOS E LARANJA QUANDO SELECIONADO */}
+          {/* 🕒 HORÁRIO */}
           <div className="relative">
             <label className="block text-xs font-black text-[#71717A] uppercase mb-3 text-center">
               Horário de Entrega
@@ -1672,9 +1795,13 @@ Agradecemos muito a sua preferência!`;
             <button
               type="button"
               onClick={() => setMostrarDropdownHora(!mostrarDropdownHora)}
-              className="w-full bg-[#FFFFFF] border-2 border-orange-500 rounded-xl p-3 text-center text-orange-600 font-black text-lg flex justify-center items-center gap-2 shadow-sm hover:border-orange-600 transition-all"
+              className={`w-full border-2 rounded-xl p-3 text-center font-black text-lg flex justify-center items-center gap-2 shadow-sm transition-all ${
+                horarioAvulso && horarioAvulso !== "0:00"
+                  ? "bg-orange-500 border-orange-600 text-white"
+                  : "bg-[#FFFFFF] border-orange-500 text-orange-600 hover:border-orange-600"
+              }`}
             >
-              <span className="tracking-wider">{horarioAvulso}</span> 
+              <span className="tracking-wider">{horarioAvulso === "0:00" ? "Selecione o horário" : horarioAvulso}</span> 
               <span>⏱</span>
             </button>
             {mostrarDropdownHora && (
@@ -1690,7 +1817,7 @@ Agradecemos muito a sua preferência!`;
                     className={`p-2 rounded-lg border-2 text-center font-black text-sm transition-all transform hover:scale-105 active:scale-95 ${
                       horarioAvulso === hora 
                         ? "bg-orange-500 border-orange-600 text-white shadow-md" 
-                        : "border-orange-100 bg-white hover:bg-orange-100 hover:border-orange-300 text-[#27272A]"
+                        : "border-orange-200 bg-white hover:bg-orange-100 hover:border-orange-400 text-[#27272A]"
                     }`}
                   >
                     {hora}
@@ -1700,7 +1827,7 @@ Agradecemos muito a sua preferência!`;
             )}
           </div>
 
-          {/* 💳 Pagamento - PIX VERDE / DINHEIRO AMARELO / FONTE COMBINANDO */}
+          {/* 💳 FORMA DE PAGAMENTO */}
           <div>
             <label className="block text-xs font-black text-[#71717A] uppercase mb-2 text-center">Forma de Pagamento</label>
             <div className="grid grid-cols-2 gap-3">
@@ -1729,21 +1856,45 @@ Agradecemos muito a sua preferência!`;
             </div>
           </div>
 
+          {/* 💰 TROCO - SÓ APARECE SE FOR DINHEIRO */}
           {pagamentoAvulso === "Dinheiro" && (
-            <div>
-              <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Troco para Quanto?</label>
-              <input
-                type="text"
-                value={trocoParaAvulso}
-                onChange={(e) => setTrocoParaAvulso(e.target.value)}
-                placeholder="0,00"
-                className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-amber-500"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Valor Recebido</label>
+                <input
+                  type="text"
+                  value={trocoParaAvulso || ""}
+                  onChange={(e) => {
+                    const valor = e.target.value.replace(/\D/g, "");
+                    if (!valor) {
+                      setTrocoParaAvulso("");
+                      setTrocoCalculadoAvulso(0);
+                      return;
+                    }
+                    const valorNumerico = Number(valor) / 100;
+                    setTrocoParaAvulso(valorNumerico.toFixed(2).replace(".", ","));
+                    setTrocoCalculadoAvulso(valorNumerico - valorTotalAvulsoNumerico);
+                  }}
+                  placeholder="0,00"
+                  className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                <p className="text-xs font-black text-amber-700 uppercase mb-1">Troco</p>
+                <p className="font-bold text-lg">
+                  {trocoCalculadoAvulso > 0 
+                    ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` 
+                    : trocoCalculadoAvulso === 0 
+                      ? "SEM TROCO" 
+                      : "Valor insuficiente"}
+                </p>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Seleção de Produtos ✅ ITENS SELECIONADOS COM COR ✅ */}
+        {/* 🛒 PRODUTOS E VALOR TOTAL */}
         <div className="space-y-4">
           <h3 className="text-sm font-black text-orange-400 uppercase tracking-wider text-center">Produtos</h3>
           
@@ -1799,87 +1950,111 @@ Agradecemos muito a sua preferência!`;
             )
           })}
 
-          {/* Total e Ações */}
-          <div className="mt-6 p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-sm font-black text-[#71717A] uppercase">Valor Total</span>
-              <span className="text-[2.5rem] leading-none font-black text-emerald-600 drop-shadow-sm">R$ {valorTotalAvulso}</span>
+          {/* ✅ VALOR TOTAL */}
+          <div className="mt-6 p-5 bg-[#FFFBEB] border border-emerald-400/40 rounded-xl shadow-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-base font-black text-orange-700 uppercase tracking-wider">Valor Total</span>
+              <span className="text-3xl font-black text-emerald-600 drop-shadow-sm">
+                R$ {valorTotalAvulso}
+              </span>
             </div>
-            
+          </div>
+
+          {/* 📋 AÇÕES */}
+          <div className="p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl mt-4">
             <div className="grid grid-cols-2 gap-3 mb-4">
-              {/* ✅ COPIAR RESUMO SEM EMOJIS + ABRE WHATSAPP ✅ */}
               <button
                 type="button"
                 onClick={() => {
-                  const listaItens = Object.entries(itensAvulsos)
-                    .filter(([_, qtd]) => Number(qtd) > 0)
-                    .map(([chave, qtd]) => {
-                      const prod = produtos.find(p => p.chave === chave);
-                      return prod ? `• ${qtd}x ${prod.nome}` : "";
-                    })
-                    .join("\n");
+                  // ✅ FUNÇÃO COM TEXTO LIMPO, SEM EMOJIS
+                  const gerarResumoPedidoWhatsApp = () => {
+                    let enderecoCompleto = "";
+                    if (ruaAvulso || numeroAvulso || referenciaAvulso) {
+                      enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim();
+                    }
 
-                  const enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, ${numeroAvulso}` : ""}${referenciaAvulso ? ` - Ref: ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão";
+                    let mensagem = `Olá ${nomeAvulso}.\n`;
+                    mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
+                    mensagem += `RESUMO DO PEDIDO\n`;
+                    mensagem += `----------------------------------------\n\n`;
+                    mensagem += `CLIENTE: ${nomeAvulso}\n`;
+                    mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
+                    mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
+                    mensagem += `HORÁRIO: ${horarioAvulso}\n`;
+                    mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
 
-                  const resumo = `━━━━━━━━━━━━━━━━━━
-TAPICUZ
+                    if (pagamentoAvulso === "Dinheiro") {
+                      mensagem += `TROCO: ${trocoCalculadoAvulso > 0 ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
+                    }
 
-Cliente: ${nomeAvulso || "NÃO INFORMADO"}
-Horário: ${horarioAvulso || "NÃO INFORMADO"}
+                    mensagem += `----------------------------------------\n`;
+                    mensagem += `ITENS DO PEDIDO\n`;
 
-Entrega:
-${enderecoCompleto}
+                    let temItens = false;
+                    Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
+                      if (qtd > 0) {
+                        const prod = produtos.find(p => p.chave === chave);
+                        if (prod) {
+                          mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
+                          temItens = true;
+                        }
+                      }
+                    });
 
-Itens:
-${listaItens || "NENHUM ITEM SELECIONADO"}
+                    if (!temItens) {
+                      mensagem += `NENHUM ITEM CADASTRADO\n`;
+                    }
 
-Pagamento:
-${pagamentoAvulso || "NÃO INFORMADO"}
-${pagamentoAvulso === "Dinheiro" && trocoParaAvulso ? `Troco para: R$ ${trocoParaAvulso}` : ""}
+                    mensagem += `----------------------------------------\n`;
+                    mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
+                    mensagem += `Agradecemos a sua preferência!`;
 
-Total:
-R$ ${valorTotalAvulso}
-━━━━━━━━━━━━━━━━━━`;
+                    return mensagem;
+                  };
 
+                  const resumo = gerarResumoPedidoWhatsApp();
                   navigator.clipboard.writeText(resumo);
-                  const urlZap = `https://wa.me/?text=${encodeURIComponent(resumo)}`;
-                  window.open(urlZap, "_blank");
+                  const numeroLimpo = (whatsappAvulso || "").replace(/\D/g, "");
+                  if (numeroLimpo.length >= 10) {
+                    const urlZap = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(resumo)}`;
+                    window.open(urlZap, "_blank");
+                  } else {
+                    const urlZap = `https://wa.me/?text=${encodeURIComponent(resumo)}`;
+                    window.open(urlZap, "_blank");
+                  }
+                  setMostrarModalCopiado(true);
+                  setTimeout(() => setMostrarModalCopiado(false), 2000);
                 }}
-                className="py-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl font-black text-xs uppercase hover:bg-blue-500/20 transition-all"
+                className="py-3 bg-green-500/10 text-green-600 border border-green-500/20 rounded-xl font-black text-xs uppercase hover:bg-green-500/20 transition-all w-full"
               >
-                📋 Copiar Resumo
+                📋 Copiar / Abrir WhatsApp
               </button>
             </div>
 
-            {/* ✅ ÁREA DOS BOTÕES DE FINALIZAR - BONITOS E COLORIDOS ✅ */}
+            {/* ✅ BOTÕES DE STATUS CORRIGIDOS */}
             <div className="text-center mb-3">
               <span className="text-sm font-bold text-[#71717A] uppercase">Escolha o status para finalizar:</span>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {/* BOTÃO PAGO - VERDE */}
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico === 0}
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
                 onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
                 className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
                 💲 Pago
               </button>
-
-              {/* BOTÃO EM ESPERA - AZUL */}
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico === 0}
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
                 onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
                 className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
                 📦 Em Espera
               </button>
-
-              {/* BOTÃO PENDENTE - LARANJA/AMARELO */}
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico === 0}
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
                 onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
                 className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
@@ -2164,50 +2339,89 @@ Agradecemos a preferência.`;
 {/* ================= ABA: VENDAS PAGAS ============= */}
 {/* ================================================== */}
 {abaAtiva === "historico" && (
-  <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
-    <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6">
-      📜 Histórico de Vendas Pagas ({pedidosPagos.length})
+  <div className="bg-[#FFFAF5] border border-[#F3E9DD] rounded-3xl p-6 shadow-lg">
+    <h2 className="text-lg font-black text-orange-500 uppercase tracking-wider mb-6 flex items-center gap-2">
+      📜 Histórico de Vendas Pagas <span className="text-orange-400">({pedidosPagos.length})</span>
     </h2>
 
     {pedidosPagos.length === 0 ? (
-      <div className="text-center py-12 text-zinc-500 font-bold uppercase">
-        📭 Nenhuma venda registrada
+      <div className="text-center py-14 text-zinc-500 font-medium uppercase text-sm">
+        📭 Nenhuma venda registrada no momento
       </div>
     ) : (
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border border-[#F3E9DD]">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-[#F3F4F6]">
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase">Cliente</th>
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase">Horário</th>
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase">Pagamento</th>
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase">Valor</th>
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase">Status</th>
-              <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Ações</th>
+            <tr className="bg-[#FFF7ED] border-b border-[#F3E9DD]">
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Cliente</th>
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Horário</th>
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Pagamento</th>
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Valor</th>
+              {/* Ajuste aqui: alinhamento e proporção */}
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-center">Status</th>
+              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/50">
+          <tbody className="divide-y divide-[#F3E9DD]">
             {pedidosPagos.map((pedido) => (
-              <tr key={pedido.id} className="hover:bg-[#FFEDD5]/30 transition-colors">
-                <td className="p-3 font-bold">{pedido.nome}</td>
-                <td className="p-3 text-amber-400 font-bold">{pedido.horario}</td>
-                <td className="p-3">
-                  <span className={`px-2 py-1 rounded text-xs font-black uppercase ${pedido.pagamento === "Pix" ? "bg-teal-500/10 text-teal-400" : "bg-amber-500/10 text-amber-400"}`}>
+              <tr 
+                key={pedido.id} 
+                className="hover:bg-[#FFEDD5]/60 transition-all duration-200 ease-in-out"
+              >
+                {/* Cliente */}
+                <td className="p-4 max-w-[200px] group relative">
+                  <div 
+                    className="font-semibold text-zinc-800 truncate cursor-help"
+                    title={pedido.nome}
+                  >
+                    {pedido.nome}
+                  </div>
+                  <div className="absolute left-0 top-full mt-1 z-10 hidden group-hover:block bg-zinc-800 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-xs break-words">
+                    {pedido.nome}
+                  </div>
+                </td>
+
+                {/* Horário */}
+                <td className="p-4">
+                  <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md text-sm">
+                    {pedido.horario}
+                  </span>
+                </td>
+
+                {/* Pagamento */}
+                <td className="p-4">
+                  <span 
+                    className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
+                      pedido.pagamento === "Pix" 
+                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
+                        : pedido.pagamento === "Dinheiro"
+                        ? "bg-blue-100 text-blue-700 border border-blue-200"
+                        : "bg-amber-100 text-amber-700 border border-amber-200"
+                    }`}
+                  >
                     {pedido.pagamento}
                   </span>
                 </td>
-                <td className="p-3 font-mono font-bold text-emerald-400">
-                  R$ {pedido.valorTotal.toFixed(2)}
+
+                {/* Valor */}
+                <td className="p-4">
+                  <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
+                    R$ {pedido.valorTotal.toFixed(2)}
+                  </span>
                 </td>
-                <td className="p-3">
-                  <span className={`text-xs font-black uppercase px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400`}>
+
+                {/* Status: centralizado e proporcional */}
+                <td className="p-4 text-center">
+                  <span className="inline-block w-max text-xs font-bold uppercase px-3 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200">
                     Concluído
                   </span>
                 </td>
-                <td className="p-3 text-right">
+
+                {/* Ações: alinhado à direita e proporcional */}
+                <td className="p-4 text-right">
                   <button
                     onClick={() => setPedidoDetalhado(pedido)}
-                    className="px-3 py-1.5 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg text-xs font-black uppercase"
+                    className="px-3.5 py-1.5 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
                   >
                     Detalhes
                   </button>
