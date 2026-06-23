@@ -1,5 +1,9 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  swcMinify: false,               // 🚫 Desativa o SWC que está dando erro
+  experimental: {
+    forceSwcTransforms: false     // Força usar o compilador normal
+  }
+};
 
-const nextConfig: NextConfig = {};
-
-export default nextConfig;
+module.exports = nextConfig;
