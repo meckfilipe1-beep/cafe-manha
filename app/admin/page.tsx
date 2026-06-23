@@ -14,7 +14,7 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
-// ⚙️ CONFIGURAÇÃO DO CANAL (VIBRAÇÃO E SOM DO SISTEMA)
+// Configuração das notificações
 const configurarNotificacoes = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
 
@@ -26,44 +26,47 @@ const configurarNotificacoes = async () => {
     await LocalNotifications.createChannel({
       id: 'pedidos-alta',
       name: 'Avisos de Pedido',
-      description: 'Aviso quando chegar novo pedido',
-      importance: 5,       // Máxima prioridade
-      visibility: 1,       // Aparece na tela bloqueada
-      sound: 'default',    // Som padrão do sistema para a notificação
-      vibration: true,     // Vibra junto
-      lights: true,        // Acende a luz de notificação
-      lightColor: '#F97316'// Cor laranja da sua marca
+      importance: 5,
+      visibility: 1,
+      sound: 'default',
+      vibration: true
     });
-
   } catch (err) {
     console.log("Só funciona no app:", err);
   }
 };
 
-// 📢 FUNÇÃO DE AVISO
+// Função que avisa quando chegar pedido
 const avisarNovoPedido = async () => {
-  // 🔊 Toca o seu som personalizado primeiro
   tocarSomPedido();
 
-  if (typeof window === "undefined" || !(window as any).Capacitor) return;
+  if (!(window as any).Capacitor) return;
 
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications');
     await LocalNotifications.schedule({
-      notifications: [
-        {
-          title: "TAPICUZ DA SUL",
-          body: "🔔 NOVO PEDIDO CHEGOU!",
-          channelId: "pedidos-alta", // Usa o canal com som/vibração
-          id: Date.now(),
-          smallIcon: "ic_stat_notification" // Ícone branco que vamos gerar
-        }
-      ]
+      notifications: [{
+        title: "TAPICUZ DA SUL",
+        body: "🔔 NOVO PEDIDO CHEGOU!",
+        channelId: "pedidos-alta",
+        id: Date.now()
+      }]
     });
   } catch (erro) {
-    console.log("Erro notificação:", erro);
+    console.log("Aviso só no app:", erro);
   }
 };
+
+// Som do aviso
+function tocarSomPedido() {
+  const audio = new Audio('/pedido.mp3');
+  audio.play().catch(() => {});
+}
+
+// Chama a configuração uma vez ao abrir
+useEffect(() => {
+  configurarNotificacoes();
+}, []);
 
 // ✅ SOM PERSONALIZADO (CORRIGIDO PARA FUNCIONAR NO APP E NA WEB)
 function tocarSomPedido() {
