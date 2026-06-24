@@ -5,16 +5,16 @@ const config: CapacitorConfig = {
   appName: 'Tapicuz da Sul',
   webDir: 'out',
 
-  // Endereço correto que vai direto para a área de admin
+  // ✅ Configuração do servidor: aponta direto para a página de admin
   server: {
     url: 'https://tapicuz-admin-gujb.vercel.app/admin',
-    cleartext: true,
+    cleartext: false, // Melhor segurança, usa HTTPS
     androidScheme: 'https',
-    allowNavigation: ['*'],
+    allowNavigation: ['*'], // Permite abrir links externos
     hostname: 'tapicuz-admin-gujb.vercel.app'
   },
 
-
+  // ✅ Configuração das notificações locais
   plugins: {
     LocalNotifications: {
       smallIcon: "mipmap/ic_launcher",
