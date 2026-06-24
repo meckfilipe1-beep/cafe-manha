@@ -3,27 +3,21 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.tapicuz.admin',
   appName: 'Tapicuz da Sul',
-  webDir: 'out', // Pasta vazia só para não dar erro
+  webDir: 'out',
 
+  // Endereço correto que vai direto para a área de admin
   server: {
-     url: 'https://tapicuz-admin-gujb.vercel.app',
+    url: 'https://tapicuz-admin-gujb.vercel.app/admin',
     cleartext: true,
     androidScheme: 'https',
     allowNavigation: ['*'],
     hostname: 'tapicuz-admin-gujb.vercel.app'
   },
 
-  android: {
-    allowMixedContent: true,
-    backgroundColor: '#FFFFFF',
-    usesCleartextTraffic: true,
-    defaultToWebView: true,
-    minSdkVersion: 24
-  },
 
   plugins: {
     LocalNotifications: {
-      smallIcon: "ic_stat_notification",
+      smallIcon: "mipmap/ic_launcher",
       iconColor: "#F97316"
     }
   }
