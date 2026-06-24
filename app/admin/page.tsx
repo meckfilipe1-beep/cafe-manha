@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { db } from "@/lib/firebase";
+import { PushNotifications } from '@capacitor/push-notifications';
 import {
   collection,
   onSnapshot,
@@ -120,6 +121,54 @@ const [statusAvulso, setStatusAvulso] = useState("Pendente");
     sexta: true,
     sabado: true,
   })
+const registrarPush = async () => {
+  // ✅ Verificação segura, sem erro de tipo
+  if (
+    typeof window === "undefined" ||
+    !(window as any).Capacitor ||
+    !(window as any).Capacitor.isNativePlatform()
+  ) {
+    console.log("PushNotifications não suportado na web — ignorado.");
+    return;
+  }
+
+  try {
+    await PushNotifications.removeAllListeners();
+    const perm = await PushNotifications.checkPermissions();
+
+    if (perm.receive === "denied") {
+      alert("❌ Notificações bloqueadas!\nVá em: Configurações > Aplicativos > SeuApp > Notificações > Ativar");
+      return;
+    }
+
+    if (perm.receive === "prompt") {
+      const novaPermissao = await PushNotifications.requestPermissions();
+      if (novaPermissao.receive !== "granted") {
+        alert("❌ Permissão de notificações negada");
+        return;
+      }
+    }
+
+    if (perm.receive === "granted") {
+      await PushNotifications.register();
+
+      PushNotifications.addListener("registration", async (token) => {
+        const tokenFCM = token.value;
+        console.log("✅ TOKEN FCM PRONTO:", tokenFCM);
+        if (navigator.clipboard) await navigator.clipboard.writeText(tokenFCM);
+        alert("✅ TOKEN GERADO E COPIADO:\n\n" + tokenFCM);
+      });
+
+      PushNotifications.addListener("registrationError", (err) => {
+        console.error("❌ Erro FCM:", err);
+        alert("❌ Erro ao gerar token: " + (err?.error || JSON.stringify(err) || "Erro desconhecido"));
+      });
+    }
+
+  } catch (e) {
+    console.error("❌ Erro no registro de notificações:", e);
+  }
+};
 const [funcionamentoAberta, setfuncionamentoAberta] = useState(true)
   // ✅ CORRIGIDO: DIAS E HORÁRIOS DE ENTREGA (agora domingo vem ativado e com horários)
   const [diasEntrega, setDiasEntrega] = useState<{[key: string]: boolean}>({
@@ -536,6 +585,13 @@ const unsubscribe = onSnapshot(qPedidos, (snap) => {
 });
 
   return () => unsubscribe();
+}, []);
+
+useEffect(() => {
+  configurarNotificacoes();
+  registrarPush(); // <-- já estava aqui, mas garanta que não tem erro antes
+  // ✅ ADICIONE ESSA LINHA PARA FORÇAR DEPOIS DE ABERTO
+  setTimeout(() => registrarPush(), 1500);
 }, []);
 
   useEffect(() => {
@@ -1960,108 +2016,108 @@ Agradecemos muito a sua preferência!`;
             </div>
           </div>
 
-          {/* 📋 AÇÕES */}
-          <div className="p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl mt-4">
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  // ✅ FUNÇÃO COM TEXTO LIMPO, SEM EMOJIS
-                  const gerarResumoPedidoWhatsApp = () => {
-                    let enderecoCompleto = "";
-                    if (ruaAvulso || numeroAvulso || referenciaAvulso) {
-                      enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim();
-                    }
+         {/* 📋 AÇÕES */}
+<div className="p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl mt-4">
+  <div className="grid grid-cols-2 gap-3 mb-4">
+    <button
+      type="button"
+      onClick={() => {
+        // ✅ FUNÇÃO COM TEXTO LIMPO, SEM EMOJIS
+        const gerarResumoPedidoWhatsApp = () => {
+          let enderecoCompleto = "";
+          if (ruaAvulso || numeroAvulso || referenciaAvulso) {
+            enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim();
+          }
 
-                    let mensagem = `Olá ${nomeAvulso}.\n`;
-                    mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
-                    mensagem += `RESUMO DO PEDIDO\n`;
-                    mensagem += `----------------------------------------\n\n`;
-                    mensagem += `CLIENTE: ${nomeAvulso}\n`;
-                    mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
-                    mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
-                    mensagem += `HORÁRIO: ${horarioAvulso}\n`;
-                    mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
+          let mensagem = `Olá ${nomeAvulso}.\n`;
+          mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
+          mensagem += `RESUMO DO PEDIDO\n`;
+          mensagem += `----------------------------------------\n\n`;
+          mensagem += `CLIENTE: ${nomeAvulso}\n`;
+          mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
+          mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
+          mensagem += `HORÁRIO: ${horarioAvulso}\n`;
+          mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
 
-                    if (pagamentoAvulso === "Dinheiro") {
-                      mensagem += `TROCO: ${trocoCalculadoAvulso > 0 ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
-                    }
+          if (pagamentoAvulso === "Dinheiro") {
+            mensagem += `TROCO: ${trocoCalculadoAvulso > 0 ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
+          }
 
-                    mensagem += `----------------------------------------\n`;
-                    mensagem += `ITENS DO PEDIDO\n`;
+          mensagem += `----------------------------------------\n`;
+          mensagem += `ITENS DO PEDIDO\n`;
 
-                    let temItens = false;
-                    Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
-                      if (qtd > 0) {
-                        const prod = produtos.find(p => p.chave === chave);
-                        if (prod) {
-                          mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
-                          temItens = true;
-                        }
-                      }
-                    });
+          let temItens = false;
+          Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
+            if (qtd > 0) {
+              const prod = produtos.find(p => p.chave === chave);
+              if (prod) {
+                mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
+                temItens = true;
+              }
+            }
+          });
 
-                    if (!temItens) {
-                      mensagem += `NENHUM ITEM CADASTRADO\n`;
-                    }
+          if (!temItens) {
+            mensagem += `NENHUM ITEM CADASTRADO\n`;
+          }
 
-                    mensagem += `----------------------------------------\n`;
-                    mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
-                    mensagem += `Agradecemos a sua preferência!`;
+          mensagem += `----------------------------------------\n`;
+          mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
+          mensagem += `Agradecemos a sua preferência!`;
 
-                    return mensagem;
-                  };
+          return mensagem;
+        };
 
-                  const resumo = gerarResumoPedidoWhatsApp();
-                  navigator.clipboard.writeText(resumo);
-                  const numeroLimpo = (whatsappAvulso || "").replace(/\D/g, "");
-                  if (numeroLimpo.length >= 10) {
-                    const urlZap = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(resumo)}`;
-                    window.open(urlZap, "_blank");
-                  } else {
-                    const urlZap = `https://wa.me/?text=${encodeURIComponent(resumo)}`;
-                    window.open(urlZap, "_blank");
-                  }
-                  setMostrarModalCopiado(true);
-                  setTimeout(() => setMostrarModalCopiado(false), 2000);
-                }}
-                className="py-3 bg-green-500/10 text-green-600 border border-green-500/20 rounded-xl font-black text-xs uppercase hover:bg-green-500/20 transition-all w-full"
-              >
-                📋 Copiar / Abrir WhatsApp
-              </button>
-            </div>
+        const resumo = gerarResumoPedidoWhatsApp();
+        navigator.clipboard.writeText(resumo).catch(err => console.log("Erro ao copiar:", err));
+        const numeroLimpo = (whatsappAvulso || "").replace(/\D/g, "");
+        if (numeroLimpo.length >= 10) {
+          const urlZap = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(resumo)}`;
+          window.open(urlZap, "_blank", "noopener,noreferrer");
+        } else {
+          const urlZap = `https://wa.me/?text=${encodeURIComponent(resumo)}`;
+          window.open(urlZap, "_blank", "noopener,noreferrer");
+        }
+        setMostrarModalCopiado(true);
+        setTimeout(() => setMostrarModalCopiado(false), 2000);
+      }}
+      className="py-3 bg-green-500/10 text-green-600 border border-green-500/20 rounded-xl font-black text-xs uppercase hover:bg-green-500/20 transition-all w-full"
+    >
+      📋 Copiar / Abrir WhatsApp
+    </button>
+  </div>
 
-            {/* ✅ BOTÕES DE STATUS CORRIGIDOS */}
-            <div className="text-center mb-3">
-              <span className="text-sm font-bold text-[#71717A] uppercase">Escolha o status para finalizar:</span>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
-                className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-              >
-                💲 Pago
-              </button>
-              <button
-                type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
-                className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-              >
-                📦 Em Espera
-              </button>
-              <button
-                type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
-                className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-              >
-                ⏳ Pendente
-              </button>
-            </div>
-          </div>
+  {/* ✅ BOTÕES DE STATUS CORRIGIDOS */}
+  <div className="text-center mb-3">
+    <span className="text-sm font-bold text-[#71717A] uppercase">Escolha o status para finalizar:</span>
+  </div>
+  <div className="grid grid-cols-3 gap-3">
+    <button
+      type="button"
+      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+      onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
+      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+    >
+      💲 Pago
+    </button>
+    <button
+      type="button"
+      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+      onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
+      className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+    >
+      📦 Em Espera
+    </button>
+    <button
+      type="button"
+      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+      onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
+      className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+    >
+      ⏳ Pendente
+    </button>
+  </div>
+</div>
         </div>
       </div>
     </form>
@@ -2090,52 +2146,36 @@ Agradecemos muito a sua preferência!`;
           >
             <div className="flex justify-between items-start mb-3">
               <div>
-                {/* ✅ NOME EM NEGRITO */}
-                <h3 className="font-black text-lg uppercase text-[#27272A] font-bold">{pedido.nome}</h3>
-                <p className="text-xs text-zinc-500 font-semibold"></p>
-                {/* ✅ HORA EM VERMELHO E MAIOR */}
+                <h3 className="font-black text-lg uppercase text-[#27272A]">{pedido.nome}</h3>
                 <p className="text-red-500 text-sm font-black mt-1">⏱ {pedido.horario}</p>
               </div>
-              {/* ✅ STATUS EM NEGRITO */}
-              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-red-500/10 text-red-400 border border-red-500/20 font-bold">
+              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-red-500/10 text-red-400 border border-red-500/20">
                 NÃO PAGO
               </span>
             </div>
 
-            {/* ✅ ENDEREÇO EM NEGRITO */}
             <p className="text-[#71717A] text-sm mb-3 font-bold">{pedido.endereco}</p>
 
             <div className="flex justify-between items-center mt-4">
-              {/* ✅ VALOR EM NEGRITO */}
-              <p className="text-lg font-black text-emerald-400 font-bold">R$ {pedido.valorTotal.toFixed(2)}</p>
+              <p className="text-lg font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</p>
               <div className="flex gap-2">
-                {/* ✅ BOTÃO COBRAR CORRIGIDO: SEM ALERTA, FUNCIONA DOS DOIS JEITOS */}
                 <button
                   onClick={() => {
                     if (pedido.telefone) {
                       const numeroLimpo = pedido.telefone.replace(/\D/g, "");
-                      const mensagemCobranca = `Olá ${pedido.nome}.
-Seu pedido da Tapicuz está pendente de pagamento.
-Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
-Por favor, efetue o pagamento quando puder.
-Agradecemos a preferência.`;
+                      const mensagemCobranca = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz está pendente de pagamento.\nValor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.\nPor favor, efetue o pagamento quando puder.\nAgradecemos a preferência.`;
                       const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagemCobranca)}`;
-                      window.open(url, "_blank");
+                      window.open(url, "_blank", "noopener,noreferrer");
                     } else {
-                      const mensagemCobranca = `Olá ${pedido.nome}.
-Seu pedido da Tapicuz está pendente de pagamento.
-Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
-Por favor, efetue o pagamento quando puder.
-Agradecemos a preferência.`;
+                      const mensagemCobranca = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz está pendente de pagamento.\nValor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.\nPor favor, efetue o pagamento quando puder.\nAgradecemos a preferência.`;
                       const url = `https://wa.me/?text=${encodeURIComponent(mensagemCobranca)}`;
-                      window.open(url, "_blank");
+                      window.open(url, "_blank", "noopener,noreferrer");
                     }
                   }}
                   className="px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
                 >
                   📲 Cobrar
                 </button>
-                {/* ✅ BOTÃO MARCAR PAGO COM COR DIFERENCIADA (AZUL) */}
                 <button
                   onClick={() => marcarComoPago(pedido.id)}
                   className="px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
@@ -2157,7 +2197,7 @@ Agradecemos a preferência.`;
   </div>
 )}
 
-{/* ✅ MODAL DETALHES - CORRIGIDO, NÃO CORTA + BOTÃO FECHAR */}
+{/* ✅ MODAL DETALHES */}
 {pedidoDetalhado && (
   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-lg rounded-3xl p-6 shadow-2xl my-8">
@@ -2193,10 +2233,6 @@ Agradecemos a preferência.`;
               }
               return null;
             })
-          ) : pedidoDetalhado.itens && Array.isArray(pedidoDetalhado.itens) ? (
-            pedidoDetalhado.itens.map((item, idx) => (
-              item.quantidade > 0 && <p key={idx} className="mb-1">• {item.quantidade}x {item.nome} - R$ {(item.preco * item.quantidade).toFixed(2).replace('.', ',')}</p>
-            ))
           ) : (
             <p>Nenhum item cadastrado</p>
           )}
@@ -2218,18 +2254,16 @@ Agradecemos a preferência.`;
 )}
 
 {/* ================================================== */}
-{/* 🆕 ABA: DEMANDAS - FUNCIONANDO 100% 🆕 */}
+{/* 🆕 ABA: DEMANDAS */}
 {/* ================================================== */}
 {abaAtiva === "demandas" && (
   <div className="bg-[#FFFAF5] border border-amber-500/30 rounded-3xl p-6 shadow-xl">
-    <div className="mb-6 text-center"> {/* ✅ Centralizei todo o cabeçalho aqui */}
+    <div className="mb-6 text-center">
       <h2 className="text-lg font-black text-amber-600 uppercase tracking-wider flex items-center justify-center gap-2">
         <span>📋</span> Demanda de Produção - Total Geral
       </h2>
-      
     </div>
 
-    {/* 🆕 CORREÇÃO: Agora mostra SOMENTE o que tem quantidade > 0 */}
     {Object.values(demandasProducao).every(q => q === 0) ? (
       <div className="text-center py-16 text-zinc-500 font-bold uppercase">
         ✅ Nenhuma demanda no momento
@@ -2237,7 +2271,7 @@ Agradecemos a preferência.`;
     ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
         {Object.entries(demandasProducao)
-          .filter(([_, qtd]) => qtd > 0) // 🆕 SÓ MOSTRA O QUE TEM QUE FAZER!
+          .filter(([_, qtd]) => qtd > 0)
           .sort((a, b) => b[1] - a[1])
           .map(([chave, qtd]) => (
             <div key={chave} className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#F3F4F6] text-center shadow-md">
@@ -2251,7 +2285,7 @@ Agradecemos a preferência.`;
 )}
 
 {/* ================================================== */}
-{/* 🆕 ABA: RANKING 🆕 */}
+{/* 🆕 ABA: RANKING */}
 {/* ================================================== */}
 {abaAtiva === "ranking" && (
   <div className="bg-[#FFFAF5] border border-orange-500/30 rounded-3xl p-6 shadow-xl">
@@ -2263,10 +2297,7 @@ Agradecemos a preferência.`;
     </div>
 
     {(() => {
-      const todosPedidos = [
-        ...pedidosPagos,
-        ...pedidosPendentes
-      ]
+      const todosPedidos = [...pedidosPagos, ...pedidosPendentes];
       const dadosRanking: { [key: string]: { nome: string; icone: string; qtd: number; valor: number } } = {};
 
       produtos.forEach(prod => {
@@ -2357,7 +2388,6 @@ Agradecemos a preferência.`;
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Horário</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Pagamento</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Valor</th>
-              {/* Ajuste aqui: alinhamento e proporção */}
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-center">Status</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-right">Ações</th>
             </tr>
@@ -2368,56 +2398,35 @@ Agradecemos a preferência.`;
                 key={pedido.id} 
                 className="hover:bg-[#FFEDD5]/60 transition-all duration-200 ease-in-out"
               >
-                {/* Cliente */}
                 <td className="p-4 max-w-[200px] group relative">
-                  <div 
-                    className="font-semibold text-zinc-800 truncate cursor-help"
-                    title={pedido.nome}
-                  >
-                    {pedido.nome}
-                  </div>
-                  <div className="absolute left-0 top-full mt-1 z-10 hidden group-hover:block bg-zinc-800 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-xs break-words">
+                  <div className="font-semibold text-zinc-800 truncate cursor-help" title={pedido.nome}>
                     {pedido.nome}
                   </div>
                 </td>
-
-                {/* Horário */}
                 <td className="p-4">
                   <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md text-sm">
                     {pedido.horario}
                   </span>
                 </td>
-
-                {/* Pagamento */}
                 <td className="p-4">
-                  <span 
-                    className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
-                      pedido.pagamento === "Pix" 
-                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
-                        : pedido.pagamento === "Dinheiro"
-                        ? "bg-blue-100 text-blue-700 border border-blue-200"
-                        : "bg-amber-100 text-amber-700 border border-amber-200"
-                    }`}
-                  >
+                  <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
+                    pedido.pagamento === "Pix" 
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
+                      : "bg-blue-100 text-blue-700 border border-blue-200"
+                  }`}>
                     {pedido.pagamento}
                   </span>
                 </td>
-
-                {/* Valor */}
                 <td className="p-4">
                   <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
                     R$ {pedido.valorTotal.toFixed(2)}
                   </span>
                 </td>
-
-                {/* Status: centralizado e proporcional */}
                 <td className="p-4 text-center">
                   <span className="inline-block w-max text-xs font-bold uppercase px-3 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200">
                     Concluído
                   </span>
                 </td>
-
-                {/* Ações: alinhado à direita e proporcional */}
                 <td className="p-4 text-right">
                   <button
                     onClick={() => setPedidoDetalhado(pedido)}
@@ -2440,9 +2449,7 @@ Agradecemos a preferência.`;
 {/* ================================================== */}
 {abaAtiva === "caixa" && (
   <div className="space-y-6">
-    {/* Resumo do Turno ATUAL (o que está aberto agora) */}
     <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
-      {/* ✅ TÍTULO CENTRALIZADO ✅ */}
       <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6 text-center">
         💰 Resumo do Turno Atual
       </h2>
@@ -2473,7 +2480,6 @@ Agradecemos a preferência.`;
         </div>
       </div>
 
-      {/* ✅ SÓ ESSA PARTE FOI ALTERADA: CAMPO E BOTÃO DE DESPESA ✅ */}
       <form onSubmit={lancarDespesaSimples} className="mb-6 p-4 bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl">
         <h3 className="text-sm font-black text-red-400 uppercase mb-3 text-center">Lançar Despesa</h3>
         <div className="flex flex-col gap-2 w-full">
@@ -2492,7 +2498,6 @@ Agradecemos a preferência.`;
           </button>
         </div>
       </form>
-      {/* ✅ FIM DA ALTERAÇÃO — O RESTO ESTÁ IGUAL AO SEU ✅ */}
 
       <button
         type="button"
@@ -2509,11 +2514,9 @@ Agradecemos a preferência.`;
       >
         🗑️ Apagar Histórico de Fechamentos
       </button>
-      
     </div>
-    {/* ✅ HISTÓRICO: TUDO IGUAL AO SEU, PERFEITO */}
+
     <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-5 shadow-xl">
-      {/* ✅ TÍTULO CENTRALIZADO ✅ */}
       <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-5 text-center flex justify-center items-center gap-2">
         📚 Histórico de Fechamentos
       </h2>
@@ -2524,97 +2527,56 @@ Agradecemos a preferência.`;
         </div>
       ) : (
         <div className="space-y-4">
-          {/* ✅ AGORA O SOMATÓRIO FICA AQUI, EM CIMA DE TUDO ✅ */}
           <div className="mb-4 border-2 border-orange-300 rounded-xl overflow-hidden">
             <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-4 shadow-md">
-              <h3 className="text-center text-orange-800 font-black uppercase text-lg mb-3">
-                🧾 SOMATÓRIO GERAL
-              </h3>
+              <h3 className="text-center text-orange-800 font-black uppercase text-lg mb-3">🧾 SOMATÓRIO GERAL</h3>
               <div className="grid grid-cols-2 gap-3">
-                
-                {/* 1. TOTAL FATURADO - NORMAL */}
-                <div className="text-center p-2 bg-emerald-100 rounded-lg border border-emerald-200 col-span-2">
+                <div className="col-span-2 text-center p-2 bg-emerald-100 rounded-lg border border-emerald-200">
                   <p className="text-xs font-black text-emerald-800 uppercase mb-1">Total Faturado</p>
-                  <p className="text-lg font-black text-emerald-900">
-                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.faturado || 0), 0).toFixed(2)}
-                  </p>
+                  <p className="text-lg font-black text-emerald-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.faturado || 0), 0).toFixed(2)}</p>
                 </div>
-
-                {/* 2. TOTAL DINHEIRO - NORMAL */}
                 <div className="text-center p-2 bg-amber-100 rounded-lg border border-amber-200">
                   <p className="text-xs font-black text-amber-800 uppercase mb-1">Total Dinheiro</p>
-                  <p className="text-lg font-black text-amber-900">
-                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalDinheiro || 0), 0).toFixed(2)}
-                  </p>
+                  <p className="text-lg font-black text-amber-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalDinheiro || 0), 0).toFixed(2)}</p>
                 </div>
-
-                {/* 3. TOTAL PIX - NORMAL */}
                 <div className="text-center p-2 bg-teal-100 rounded-lg border border-teal-200">
                   <p className="text-xs font-black text-teal-800 uppercase mb-1">Total Pix</p>
-                  <p className="text-lg font-black text-teal-900">
-                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalPix || 0), 0).toFixed(2)}
-                  </p>
+                  <p className="text-lg font-black text-teal-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalPix || 0), 0).toFixed(2)}</p>
                 </div>
-
-                {/* 4. TOTAL DESPESA - VOLTOU AO NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-red-100 rounded-lg border border-red-200">
                   <p className="text-xs font-black text-red-800 uppercase mb-1">Total Despesa</p>
-                  <p className="text-lg font-black text-red-900">
-                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}
-                  </p>
+                  <p className="text-lg font-black text-red-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}</p>
                 </div>
-
-                {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-500 shadow-sm">
                   <p className="text-sm font-black text-emerald-800 uppercase mb-1">Valor Total</p>
-                  <p className="text-3xl font-black text-emerald-700">
-                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.saldoLiquido || 0), 0).toFixed(2)}
-                  </p>
+                  <p className="text-3xl font-black text-emerald-700">R$ {historicoCaixas.reduce((soma, c) => soma + (c.saldoLiquido || 0), 0).toFixed(2)}</p>
                 </div>
-
               </div>
             </div>
           </div>
 
-          {/* 🔽 FECHAMENTOS INDIVIDUAIS 🔽 */}
           {historicoCaixas.map((caixa, idx) => (
-            <div 
-              key={idx} 
-              className="bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all p-4"
-            >
-              {/* 📅 DATA */}
+            <div key={idx} className="bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all p-4">
               <div className="bg-orange-50 rounded-xl p-3 mb-3 border border-orange-200">
-                <p className="text-orange-900 font-black text-sm text-center">
-                  📅 {caixa.dataHora}
-                </p>
+                <p className="text-orange-900 font-black text-sm text-center">📅 {caixa.dataHora}</p>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
-                {/* 1. FATURADO - NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-emerald-50 rounded-lg border border-emerald-100">
                   <p className="text-xs font-black text-emerald-700 uppercase mb-1">Faturado</p>
                   <p className="text-base font-black text-emerald-800">R$ {(caixa.faturado || 0).toFixed(2)}</p>
                 </div>
-
-                {/* 2. DINHEIRO - NORMAL */}
                 <div className="text-center p-2 bg-amber-50 rounded-lg border border-amber-100">
                   <p className="text-xs font-black text-amber-700 uppercase mb-1">Recebido Dinheiro</p>
                   <p className="text-base font-black text-amber-800">R$ {(caixa.totalDinheiro || 0).toFixed(2)}</p>
                 </div>
-
-                {/* 3. PIX - NORMAL */}
                 <div className="text-center p-2 bg-teal-50 rounded-lg border border-teal-100">
                   <p className="text-xs font-black text-teal-700 uppercase mb-1">Recebido Pix</p>
                   <p className="text-base font-black text-teal-800">R$ {(caixa.totalPix || 0).toFixed(2)}</p>
                 </div>
-
-                {/* 4. DESPESAS - VOLTOU AO NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-red-50 rounded-lg border border-red-100">
                   <p className="text-xs font-black text-red-700 uppercase mb-1">Despesas</p>
                   <p className="text-base font-black text-red-800">R$ {(caixa.despesas || 0).toFixed(2)}</p>
                 </div>
-
-                {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-400 shadow-sm">
                   <p className="text-sm font-black text-emerald-800 uppercase mb-1">Valor Total</p>
                   <p className="text-2xl font-black text-emerald-700">R$ {(caixa.saldoLiquido || 0).toFixed(2)}</p>
@@ -2622,55 +2584,33 @@ Agradecemos a preferência.`;
               </div>
             </div>
           ))}
-
         </div>
       )}
     </div>
   </div>
 )}
 
-{/* ✅ Modal: Confirmação Apagar Histórico (100% SEM MENSAGEM DO CHROME) */}
+{/* ✅ Modal: Confirmação Apagar Histórico */}
 {modalConfirmarApagarHistorico && (
   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div className="bg-white border border-orange-200 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
       <div className="text-center">
         <span className="text-5xl text-orange-400">🗑️</span>
       </div>
-      <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">
-        Confirmar Exclusão
-      </h3>
+      <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">Confirmar Exclusão</h3>
       <p className="text-center text-zinc-600 font-bold text-base">
         Tem certeza que deseja apagar todo o histórico de fechamentos? <br/>
         Essa ação não poderá ser desfeita.
       </p>
-
       <div className="grid grid-cols-2 gap-3 pt-2">
         <button
           onClick={() => {
-            // Limpa tudo diretamente, sem alertas antigos
             setHistoricoCaixas([]);
             localStorage.removeItem('historicoCaixas');
             setModalConfirmarApagarHistorico(false);
-
-            // Mensagem bonita personalizada
             const msg = document.createElement('div');
             msg.innerText = 'Histórico apagado com sucesso!';
-            msg.style.cssText = `
-              position: fixed;
-              top: 50%;
-              left: 50%;
-              transform: translate(-50%, -50%);
-              background: #f59e0b;
-              color: white;
-              font-weight: 900;
-              font-size: 15px;
-              padding: 14px 28px;
-              border-radius: 12px;
-              z-index: 99999;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            `;
+            msg.style.cssText = `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f59e0b; color: white; font-weight: 900; font-size: 15px; padding: 14px 28px; border-radius: 12px; z-index: 99999; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-transform: uppercase; letter-spacing: 0.5px;`;
             document.body.appendChild(msg);
             setTimeout(() => msg.remove(), 2500);
           }}
@@ -2689,7 +2629,6 @@ Agradecemos a preferência.`;
   </div>
 )}
 
-       
   </div>
 )}
 
