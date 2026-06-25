@@ -338,11 +338,12 @@ export default function ClientePainel() {
         <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto animate-bounce">✓</div>
         <h2 className="text-xl font-black text-emerald-400 uppercase">PEDIDO ENVIADO!</h2>
         {versiculoEscolhido && (
-          <div className="border-2 border-amber-500/30 p-4 bg-[#FFFAF5] rounded-2xl">
-            <span className="text-xs font-black text-amber-800 uppercase">📖 PALAVRA DO DIA</span>
-            <p className="text-base font-bold mt-2">"{versiculoEscolhido}"</p>
-          </div>
-        )}
+  <div className="border-2 border-amber-500/30 p-5 bg-[#FFFAF5] rounded-2xl">
+    <span className="text-sm font-bold text-amber-800 uppercase">📖 PALAVRA DO DIA</span>
+    <p className="text-lg font-black text-black mt-3 leading-relaxed">"{versiculoEscolhido}"</p>
+  </div>
+)}
+
         <button onClick={reiniciarPainel} className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-black font-black rounded-xl">AMÉM 🙏</button>
       </div>
     </div>
