@@ -2,16 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ✅ Permissões obrigatórias -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ✅ REGRA OBRIGATÓRIA para Android 11+ - Permite ver e abrir outros apps -->
     <queries>
-        
-        
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
     </queries>
@@ -37,16 +33,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ✅ Adiciona suporte para abrir links wa.me corretamente -->
-            <intent-filter android:label="Abrir link do WhatsApp">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="wa.me" />
-                <data android:scheme="http" android:host="wa.me" />
-            </intent-filter>
-
-        </activity>
+            </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
