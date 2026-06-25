@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "478217285958",
+    "project_id": "tapicuz-aa78f",
+    "storage_bucket": "tapicuz-aa78f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:478217285958:android:cce381d39cb359b52ab547",
+        "android_client_info": {
+          "package_name": "com.tapicuz.admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdI_6Sp0oJ5rfT0Z79HwB2C8fY3MNuPtk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
