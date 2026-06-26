@@ -1660,7 +1660,7 @@ Agradecemos a preferência.`;
               return null;
             })
           ) : pedidoDetalhado.itens && Array.isArray(pedidoDetalhado.itens) ? (
-            pedidoDetalhado.itens.map((item, idx) => (
+            pedidoDetalhado.itens.map((item: { quantidade: number; nome: string; preco: number; chave?: string }, idx: number) => (
               item.quantidade > 0 && <p key={idx} className="mb-1">• {item.quantidade}x {item.nome} - R$ {(item.preco * item.quantidade).toFixed(2).replace('.', ',')}</p>
             ))
           ) : (
