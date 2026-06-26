@@ -1,9 +1,9 @@
-import { initializeApp } from "firebase/app"
-import { getFirestore } from "firebase/firestore"
-import { useState, useEffect } from 'react' // se já não tiver esse import
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth"; // 👈 Essa linha estava faltando
 
-// SEU CÓDIGO DE funcionamentoURAÇÃO QUE VOCÊ ME MANDOU
-const firebasefuncionamento = {
+// Suas configurações corretas
+const firebaseConfig = {
   apiKey: "AIzaSyAsRmWaIlgfLSnv0xU1CBKi_8KNhDnhNjg",
   authDomain: "tapicuz-aa78f.firebaseapp.com",
   projectId: "tapicuz-aa78f",
@@ -11,7 +11,10 @@ const firebasefuncionamento = {
   messagingSenderId: "478217285958",
   appId: "1:478217285958:web:ac95f12d330d73d22ab547",
   measurementId: "G-P4FC9P4J1L"
-}
+};
 
-const app = initializeApp(firebasefuncionamento)
-export const db = getFirestore(app)
+const app = initializeApp(firebaseConfig);
+
+// Exportamos tanto o banco quanto a autenticação
+export const db = getFirestore(app);
+export const auth = getAuth(app); // 👈 Agora o auth existe!

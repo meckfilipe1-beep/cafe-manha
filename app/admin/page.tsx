@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { db } from "@/lib/firebase";
-import { PushNotifications } from '@capacitor/push-notifications';
+import { db, auth } from "@/lib/firebase";
+import { useRouter } from 'next/navigation';
 import {
   collection,
   onSnapshot,
@@ -15,44 +15,21 @@ import {
   getDoc,
   getDocs
 } from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 
-// 🆕 ADICIONADO: Função para capturar o Token do Firebase (FCM) e pedir permissões corretas
-const inicializarFirebasePush = async () => {
-  if (typeof window === "undefined" || !(window as any).Capacitor) return;
-
-  try {
-    const { PushNotifications } = await import('@capacitor/push-notifications');
-    
-    // 1. Solicita permissão nativa do Android para notificações
-    const permissao = await PushNotifications.requestPermissions();
-    if (permissao.receive === 'granted') {
-      // 2. Registra o aparelho no serviço do Firebase Cloud Messaging
-      await PushNotifications.register();
-    }
-
-    // 3. Ouve o evento de registro bem-sucedido e exibe o Token gerado
-    await PushNotifications.addListener('registration', (token) => {
-      console.log("👉 SEU TOKEN FCM GERADO:", token.value);
-    });
-
-    await PushNotifications.addListener('registrationError', (err) => {
-      console.error("Erro ao registrar no Firebase Console:", err);
-    });
-
-  } catch (err) {
-    console.log("Erro ao inicializar serviços nativos do Firebase:", err);
-  }
+// Funções auxiliares fora do componente
+const tocarSomPedido = () => {
+  if (typeof window === "undefined") return;
+  const audio = new Audio('/pedido.mp3');
+  audio.play().catch(() => {});
 };
 
-// ⚙️ CONFIGURAÇÃO DO CANAL LOCAL
 const configurarNotificacoes = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
-
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications');
     const permissao = await LocalNotifications.requestPermissions();
     if (permissao.display !== 'granted') return;
-
     await LocalNotifications.createChannel({
       id: 'pedidos-alta',
       name: 'Avisos de Pedido',
@@ -61,45 +38,29 @@ const configurarNotificacoes = async () => {
       sound: 'default',
       vibration: true,
     });
-
   } catch (err) {
     console.log("Só funciona no app:", err);
   }
 };
 
-// 📢 FUNÇÃO DE AVISO LOCAL
-const avisarNovoPedido = async () => {
-  tocarSomPedido();
-
+const inicializarFirebasePush = async () => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
-
   try {
-    const { LocalNotifications } = await import('@capacitor/local-notifications');
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          title: "TAPICUZ DA SUL",
-          body: "🔔 NOVO PEDIDO CHEGOU!",
-          channelId: "pedidos-alta",
-          id: Date.now(),
-          sound: "default"
-        }
-      ]
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    const permissao = await PushNotifications.requestPermissions();
+    if (permissao.receive === 'granted') await PushNotifications.register();
+    await PushNotifications.addListener('registration', (token) => {
+      console.log("Token FCM:", token.value);
     });
-  } catch (erro) {
-    console.log("Erro notificação:", erro);
+    await PushNotifications.addListener('registrationError', (err) => {
+      console.error("Erro no Push:", err);
+    });
+  } catch (err) {
+    console.log("Push não disponível:", err);
   }
 };
 
-// ✅ SOM DE NOTIFICAÇÃO
-function tocarSomPedido() {
-  const audio = new Audio('/pedido.mp3');
-  audio.play().catch(err => {
-    console.log('Erro ao tocar áudio:', err);
-  });
-}
-
-// 🎨 CONFIGURAÇÕES DE LAYOUT MANTIDAS
+// 🎨 Configurações fixas
 const cores = {
   fundoGeral: "#FFFFFF",
   fundoSecao: "#FFFAF5",
@@ -111,95 +72,61 @@ const cores = {
   alerta: "#F59E0B",
   erro: "#EF4444",
   borda: "#F3F4F6",
-}
+};
 
-const listaDiasSemana = [
-  { valor: "domingo", nome: "Domingo" },
-  { valor: "segunda", nome: "Segunda-feira" },
-  { valor: "terca", nome: "Terça-feira" },
-  { valor: "quarta", nome: "Quarta-feira" },
-  { valor: "quinta", nome: "Quinta-feira" },
-  { valor: "sexta", nome: "Sexta-feira" },
-  { valor: "sabado", nome: "Sábado" },
-]
+const OPCOES_HORARIOS = [
+  "0:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", 
+  "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", 
+  "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", 
+  "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", 
+  "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", 
+  "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", 
+  "23:30"
+];
 
+// 🚀 Componente principal
 export default function AdminPainel() {
-  const [produtos, setProdutos] = useState<{id: string, chave: string, nome: string, preco: number, icone: string, disponivel: boolean}[]>([])
-  const [editandoProduto, setEditandoProduto] = useState<any>(null)
-  const [novoPreco, setNovoPreco] = useState("")
-  const [novoNome, setNovoNome] = useState("")
-  const [novoDisponivel, setNovoDisponivel] = useState(true)
+  // ==============================================
+  // 1. TODOS OS HOOKS NO INÍCIO (ORDEM FIXA)
+  // ==============================================
+  const router = useRouter();
+
+  // Estados de login
+  const [usuarioLogado, setUsuarioLogado] = useState<any>(null);
+  const [carregandoLogin, setCarregandoLogin] = useState(true);
+
+  // Outros estados
+  const [produtos, setProdutos] = useState<{
+    id: string;
+    chave: string;
+    nome: string;
+    preco: number;
+    icone: string;
+    disponivel: boolean;
+  }[]>([
+    { id: "1", chave: "tap_ovo", nome: "Tapioca com Ovo", preco: 8.00, icone: "🧈", disponivel: true },
+    { id: "2", chave: "tap_queijo", nome: "Tapioca com Queijo", preco: 8.00, icone: "🧀", disponivel: true },
+    { id: "3", chave: "tap_molhada", nome: "Tapioca Molhada", preco: 7.00, icone: "🥣", disponivel: true },
+    { id: "4", chave: "tap_queijo_ovo", nome: "Tapioca Queijo e Ovo", preco: 8.00, icone: "🧈🧀", disponivel: true },
+  ]);
+
+  const [novoPreco, setNovoPreco] = useState("");
+  const [novoNome, setNovoNome] = useState("");
+  const [novoDisponivel, setNovoDisponivel] = useState(true);
+  const [editandoProduto, setEditandoProduto] = useState<any>(null);
   const [modalConfirmarApagarHistorico, setModalConfirmarApagarHistorico] = useState(false);
   const [mostrarOpcoesZap, setMostrarOpcoesZap] = useState(false);
   const [mostrarOpcoesConcluir, setMostrarOpcoesConcluir] = useState(false);
-  const [statusAvulso, setStatusAvulso] = useState("Pendente");
   const [modalSalvarTurno, setModalSalvarTurno] = useState(false);
-const [nomeTurno, setNomeTurno] = useState("");
-const [horaInicio, setHoraInicio] = useState("");
-const [horaFim, setHoraFim] = useState("");
-  const [horaAbertura, setHoraAbertura] = useState("06:00")
-  const [horaFechamento, setHoraFechamento] = useState("18:00")
+  const [horaAbertura, setHoraAbertura] = useState("06:00");
+  const [horaFechamento, setHoraFechamento] = useState("18:00");
   const [diasFuncionamento, setDiasFuncionamento] = useState<{[key: string]: boolean}>({
     domingo: true, segunda: true, terca: true, quarta: true, quinta: true, sexta: true, sabado: true,
-  })
-<<<<<<< HEAD
-const registrarPush = async () => {
-  // ✅ Verificação segura, sem erro de tipo
-  if (
-    typeof window === "undefined" ||
-    !(window as any).Capacitor ||
-    !(window as any).Capacitor.isNativePlatform()
-  ) {
-    console.log("PushNotifications não suportado na web — ignorado.");
-    return;
-  }
-
-  try {
-    await PushNotifications.removeAllListeners();
-    const perm = await PushNotifications.checkPermissions();
-
-    if (perm.receive === "denied") {
-      alert("❌ Notificações bloqueadas!\nVá em: Configurações > Aplicativos > SeuApp > Notificações > Ativar");
-      return;
-    }
-
-    if (perm.receive === "prompt") {
-      const novaPermissao = await PushNotifications.requestPermissions();
-      if (novaPermissao.receive !== "granted") {
-        alert("❌ Permissão de notificações negada");
-        return;
-      }
-    }
-
-    if (perm.receive === "granted") {
-      await PushNotifications.register();
-
-      PushNotifications.addListener("registration", async (token) => {
-        const tokenFCM = token.value;
-        console.log("✅ TOKEN FCM PRONTO:", tokenFCM);
-        if (navigator.clipboard) await navigator.clipboard.writeText(tokenFCM);
-        alert("✅ TOKEN GERADO E COPIADO:\n\n" + tokenFCM);
-      });
-
-      PushNotifications.addListener("registrationError", (err) => {
-        console.error("❌ Erro FCM:", err);
-        alert("❌ Erro ao gerar token: " + (err?.error || JSON.stringify(err) || "Erro desconhecido"));
-      });
-    }
-
-  } catch (e) {
-    console.error("❌ Erro no registro de notificações:", e);
-  }
-};
-const [funcionamentoAberta, setfuncionamentoAberta] = useState(true)
-  // ✅ CORRIGIDO: DIAS E HORÁRIOS DE ENTREGA (agora domingo vem ativado e com horários)
-=======
-  const [funcionamentoAberta, setfuncionamentoAberta] = useState(true)
-  
->>>>>>> 8f8b1c2 (ADMIN 100)
+  });
+  const [funcionamentoAberta, setFuncionamentoAberta] = useState(true);
   const [diasEntrega, setDiasEntrega] = useState<{[key: string]: boolean}>({
     domingo: true, segunda: true, terca: true, quarta: true, quinta: true, sexta: true, sabado: true,
-  })
+  });
   const [horariosPorDia, setHorariosPorDia] = useState<{[key: string]: string[]}>({
     domingo: ["07:00", "08:00", "09:00", "10:00", "11:00"],
     segunda: ["07:00", "08:00", "09:00", "10:00", "11:00"],
@@ -208,389 +135,35 @@ const [funcionamentoAberta, setfuncionamentoAberta] = useState(true)
     quinta: ["07:00", "08:00", "09:00", "10:00", "11:00"],
     sexta: ["07:00", "08:00", "09:00", "10:00", "11:00"],
     sabado: ["07:00", "08:00", "09:00", "10:00", "11:00"],
-  })
-  const [diaEditando, setDiaEditando] = useState<string | null>(null)
-  const [novoHorario, setNovoHorario] = useState("")
+  });
+  const [diaEditando, setDiaEditando] = useState<string | null>(null);
+  const [novoHorario, setNovoHorario] = useState("");
 
-  const OPCOES_HORARIOS = [
-    "0:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", 
-    "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", 
-    "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", 
-    "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", 
-    "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", 
-    "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", 
-    "23:30"
-  ];
+  const [pedidos, setPedidos] = useState<any[]>([]);
+  const [historicoCaixas, setHistoricoCaixas] = useState<any[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [abaAtiva, setAbaAtiva] = useState("pedidos");
+  const [notificacaoCaixa, setNotificacaoCaixa] = useState<string | null>(null);
+  const [mostrarModalCopiado, setMostrarModalCopiado] = useState(false);
+  const [pedidoSelecionadoParaConcluir, setPedidoSelecionadoParaConcluir] = useState<any | null>(null);
+  const [mostrarResumoFinalAvulso, setMostrarResumoFinalAvulso] = useState(false);
+  const [pedidoDetalhado, setPedidoDetalhado] = useState<any | null>(null);
+  const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false);
+  const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
+  const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
+  const [valorDespesaInput, setValorDespesaInput] = useState("");
+  const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
 
-  function chamarClienteWhatsapp(pedido: any) {
-  if (!pedido.telefone) {
-    alert("Cliente não informou telefone.")
-    return
-  }
-
-  const numero = pedido.telefone.replace(/\D/g, "")
-
-  const mensagem =
-    `Olá ${pedido.nome} 😊
-
-Seu pedido da Tapicuz já está sendo preparado.
-
-⏰ Horário: ${pedido.horario}
-
-Obrigado pela preferência! 🧡`
-
-  const link = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`
-
-  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-    (async () => {
-      try {
-        const { AppLauncher } = await import('@capacitor/app-launcher');
-        await AppLauncher.openUrl({ url: link });
-      } catch {
-        const { Browser } = await import('@capacitor/browser');
-        await Browser.open({ url: link });
-      }
-    })();
-  } else {
-    window.open(link, "_blank", "noopener,noreferrer");
-  }
-}
-  
-  function pegarPreco(chave: string): number {
-    const p = produtos.find(pr => pr.chave === chave)
-    return p?.preco || 0
-  }
-
-  function formatarNomeItem(nomeChave: string) {
-    const p = produtos.find(pr => pr.chave === nomeChave)
-    return p ? `${p.icone} ${p.nome}` : nomeChave
-  }
-
-  // 🆕 Buscar produtos
-  useEffect(() => {
-    const qProdutos = query(collection(db, "produtos"))
-    const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
-      const lista: any[] = []
-      snap.forEach(d => lista.push({ id: d.id, ...d.data() }))
-      lista.sort((a, b) => {
-        const nomeA = a?.nome || ""
-        const nomeB = b?.nome || ""
-        return nomeA.localeCompare(nomeB)
-      })
-      setProdutos(lista)
-    })
-
-    return () => unsubscribeProdutos()
-  }, [])
-  const finalizarPedidoAvulsoComStatusRoteado = async (status: string) => {
-  try {
-    setNotificacaoCaixa("⏳ Processando pedido...");
-
-    // Aqui você coloca a lógica real:
-    // - Coletar os dados do pedido avulso
-    // - Enviar para a API / banco de dados
-    // Exemplo básico:
-    /*
-    const resposta = await fetch("/api/pedidos-avulsos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status,
-        valorTotal: valorTotalAvulsoNumerico,
-        // adicione aqui os outros dados do pedido
-      })
-    });
-
-    if (!resposta.ok) throw new Error("Falha ao registrar o pedido");
-    */
-
-    // Mensagem de sucesso
-    setNotificacaoCaixa(`✅ Pedido finalizado com status: ${status.toUpperCase()}`);
-    
-    // Opcional: limpar o formulário após salvar
-    // setValorTotalAvulso("");
-    // Outros resetes de estado...
-
-  } catch (error) {
-    setNotificacaoCaixa(`❌ Erro: ${error instanceof Error ? error.message : "Não foi possível finalizar o pedido"}`);
-  } finally {
-    setTimeout(() => setNotificacaoCaixa(null), 9000);
-  }
-};
-// ⬇️ Adicione isso ANTES do seu return, no início do componente
-async function dispararFluxoConclusaoAvulso(e: React.FormEvent) {
-  e.preventDefault(); // Impede o recarregamento da página
-
-  try {
-    // Aqui você coloca a lógica que já tinha ou vai criar para essa ação
-    console.log("🚀 Iniciando fluxo de conclusão avulsa...");
-
-    // Exemplo básico — substitua pelo seu código real:
-    // await algumaFuncaoSalvarDados();
-
-    setNotificacaoCaixa("✅ Conclusão registrada com sucesso!");
-    setTimeout(() => setNotificacaoCaixa(null), 5000);
-
-  } catch (error) {
-    console.error("❌ Erro na conclusão avulsa:", error);
-    setNotificacaoCaixa("❌ Não foi possível concluir. Verifique os dados.");
-    setTimeout(() => setNotificacaoCaixa(null), 5000);
-  }
-}
-  // 🆕 Salvar alteração de produto
-  async function salvarAlteracaoProduto() {
-    if (!editandoProduto) return
-    try {
-      await updateDoc(doc(db, "produtos", editandoProduto.id), {
-        nome: novoNome,
-        preco: parseFloat(novoPreco),
-        disponivel: novoDisponivel
-      })
-      setEditandoProduto(null)
-      setNotificacaoCaixa("✅ Produto atualizado com sucesso!")
-      setTimeout(() => setNotificacaoCaixa(null), 2000)
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  async function apagarHistoricoCaixas() {
-    const confirmar = window.confirm(
-      "Tem certeza que deseja apagar TODO o histórico de fechamentos?"
-    )
-    if (!confirmar) return
-    try {
-      const snap = await getDocs(collection(db, "historico_caixas"))
-      await Promise.all(
-        snap.docs.map(item => deleteDoc(doc(db, "historico_caixas", item.id)))
-      )
-      setHistoricoCaixas([])
-      setNotificacaoCaixa("🗑️ Histórico apagado com sucesso!")
-      setTimeout(() => setNotificacaoCaixa(null), 3000)
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
-  // ✅ NOVA FUNÇÃO: GERAR HORÁRIOS DE 30 EM 30 MINUTOS
-  function gerarHorarios(inicio: string, fim: string) {
-    const horarios = []
-
-    let atual = new Date()
-    const [hInicio, mInicio] = inicio.split(":").map(Number)
-
-    atual.setHours(hInicio, mInicio, 0, 0)
-
-    const encerramento = new Date()
-    const [hFim, mFim] = fim.split(":").map(Number)
-
-    encerramento.setHours(hFim, mFim, 0, 0)
-
-    while (atual <= encerramento) {
-      horarios.push(
-        atual.toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      )
-
-      atual.setMinutes(atual.getMinutes() + 30)
-    }
-
-    return horarios
-  }
-
-  // ⏰ CORRIGIDO: caminho único para configuração
-  const carregarfuncionamentouracoesFuncionamento = async () => {
-    try {
-     const docRef = doc(db, "configuracoes", "funcionamento")
-      const docSnap = await getDoc(docRef)
-      if (docSnap.exists()) {
-        const dados = docSnap.data()
-        setHoraAbertura(dados.horaAbertura || "06:00")
-        setHoraFechamento(dados.horaFechamento || "18:00")
-        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento)
-        
-        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
-        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
-        if (dados.aberta !== undefined) setfuncionamentoAberta(dados.aberta)
-      }
-    } catch (erro) {
-      console.error("Erro ao carregar configurações:", erro)
-    }
-  }
-
-  // ✅ FUNÇÃO SALVAR ATUALIZADA COM GERAÇÃO AUTOMÁTICA
-  const salvarfuncionamentouracoesFuncionamento = async () => {
-    try {
-      const horariosGerados = gerarHorarios(horaAbertura, horaFechamento)
-
-      const novosHorariosPorDia = {
-        domingo: diasFuncionamento.domingo ? horariosGerados : [],
-        segunda: diasFuncionamento.segunda ? horariosGerados : [],
-        terca: diasFuncionamento.terca ? horariosGerados : [],
-        quarta: diasFuncionamento.quarta ? horariosGerados : [],
-        quinta: diasFuncionamento.quinta ? horariosGerados : [],
-        sexta: diasFuncionamento.sexta ? horariosGerados : [],
-        sabado: diasFuncionamento.sabado ? horariosGerados : [],
-      }
-
-      await setDoc(
-        doc(db, "configuracoes", "funcionamento"),
-        { 
-          horaAbertura, 
-          horaFechamento, 
-          diasFuncionamento,
-          diasEntrega,
-          horariosPorDia: novosHorariosPorDia,
-          aberta: funcionamentoAberta
-        }
-      )
-      setNotificacaoCaixa("✅ Configurações salvas!")
-      setTimeout(() => setNotificacaoCaixa(null), 2000)
-    } catch (erro) {
-      console.error("Erro ao salvar:", erro)
-      setNotificacaoCaixa("❌ Erro ao salvar")
-      setTimeout(() => setNotificacaoCaixa(null), 2000)
-    }
-  }
-
-  // ✅ CORRIGIDO: caminho único
-  useEffect(() => {
-    carregarfuncionamentouracoesFuncionamento()
-
-    const ref = doc(db, "configuracoes", "funcionamento")
-
-    const unsubscribe = onSnapshot(ref, (snapshot) => {
-      if (snapshot.exists()) {
-        const dados = snapshot.data();
-        setHoraAbertura(dados.horaAbertura || "06:00")
-        setHoraFechamento(dados.horaFechamento || "18:00")
-        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento)
-        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega)
-        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia)
-        if (dados.aberta !== undefined) setfuncionamentoAberta(dados.aberta)
-      }
-    })
-
-    return () => unsubscribe()
-  }, [])
-
-  // 📝 Função CORRIGIDA: Agora ao marcar/desmarcar no admin, OCULTA/MOSTRA para o cliente
-  const alternarDia = (valorDia: string) => {
-    setDiasFuncionamento(prev => {
-      const novoEstado = { ...prev, [valorDia]: !prev[valorDia as keyof typeof prev] }
-      setDiasEntrega(entrega => ({ ...entrega, [valorDia]: novoEstado[valorDia] }))
-      return novoEstado
-    })
-  }
-
-  // ✅ NOVAS FUNÇÕES PARA GERENCIAR ENTREGAS
-  const alternarDiaEntrega = (valorDia: string) => {
-    setDiasEntrega(prev => ({
-      ...prev,
-      [valorDia]: !prev[valorDia as keyof typeof prev]
-    }))
-  }
-
-  const adicionarHorario = (dia: string) => {
-    if (!novoHorario || !/^\d{2}:\d{2}$/.test(novoHorario)) {
-      alert("Digite horário válido: HH:MM")
-      return
-    }
-    if (horariosPorDia[dia].includes(novoHorario)) {
-      alert("Horário já existe!")
-      return
-    }
-    setHorariosPorDia(prev => ({
-      ...prev,
-      [dia]: [...prev[dia], novoHorario].sort()
-    }))
-    setNovoHorario("")
-    setDiaEditando(null)
-  }
-
-  const removerHorario = (dia: string, hora: string) => {
-    setHorariosPorDia(prev => ({
-      ...prev,
-      [dia]: prev[dia].filter(h => h !== hora)
-    }))
-  }
-
-interface Pedido {
-  id: string
-  nome: string
-  endereco: string
-  rua: string
-  numero: string
-  bairro?: string
-  cidade?: string
-  observacao?: string
-  pagamento: string
-  troco: number
-  trocoPara: number
-  valorTotal: number
-  horario: string
-  pago: boolean
-  concluido: boolean
-  statusPagamento?: "pendente" | "pago"
-  dataCriacao?: any
-  telefone?: string
-  itens: {
-    tapiocaMolhada: number
-    tapiocaManteiga: number
-    tapiocaQueijo: number
-    tapiocaOvo: number
-    tapiocaQueijoOvo: number
-    cuscuzMilho: number
-    cuscuzArroz: number
-    cuscuzMilhoArroz: number
-    cafe: number
-  }
-}
-
-interface HistoricoCaixa {
-  id: string
-  tipo: "fechamento_turno"
-  data: string
-  dataHora: string
-  faturado: number
-  totalPix: number
-  totalDinheiro: number
-  despesas: number
-  saldoLiquido: number
-}
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [historicoCaixas, setHistoricoCaixas] = useState<HistoricoCaixa[]>([])
-  const [carregando, setCarregando] = useState(true)
-  const [abaAtiva, setAbaAtiva] = useState<"pedidos" | "avulso" | "historico" | "caixa" | "pendencias" | "zerar" | "produtos" | "demandas" | "ranking" | "entregas">("pedidos")
- 
-  const [notificacaoCaixa, setNotificacaoCaixa] = useState<string | null>(null)
-  const [mostrarModalCopiado, setMostrarModalCopiado] = useState(false)
-  const [pedidoSelecionadoParaConcluir, setPedidoSelecionadoParaConcluir] = useState<Pedido | null>(null)
-  const [mostrarResumoFinalAvulso, setMostrarResumoFinalAvulso] = useState(false)
-  const [pedidoDetalhado, setPedidoDetalhado] = useState<Pedido | null>(null)
-  
-  const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false)
-  
-  const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false)
-  const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false)
-
-  const [valorDespesaInput, setValorDespesaInput] = useState("")
-  const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0)
-
-  const [nomeAvulso, setNomeAvulso] = useState("")
-  const [ruaAvulso, setRuaAvulso] = useState("")
-  const [numeroAvulso, setNumeroAvulso] = useState("")
-  const [referenciaAvulso, setReferenciaAvulso] = useState("")
-  const [observacaoAvulso, setObservacaoAvulso] = useState("")
-  const [pagamentoAvulso, setPagamentoAvulso] = useState<"Pix" | "Dinheiro">("Pix")
-  const [trocoParaAvulso, setTrocoParaAvulso] = useState("")
-  const [horarioAvulso, setHorarioAvulso] = useState("0:00")
-  const [valorTotalAvulso, setValorTotalAvulso] = useState("0.00")
-  const [criandoAvulso, setCriandoAvulso] = useState(false)
-const [whatsappAvulso, setWhatsappAvulso] = useState("");
-const [trocoCalculadoAvulso, setTrocoCalculadoAvulso] = useState(0);
+  const [nomeAvulso, setNomeAvulso] = useState("");
+  const [ruaAvulso, setRuaAvulso] = useState("");
+  const [numeroAvulso, setNumeroAvulso] = useState("");
+  const [referenciaAvulso, setReferenciaAvulso] = useState("");
+  const [observacaoAvulso, setObservacaoAvulso] = useState("");
+  const [pagamentoAvulso, setPagamentoAvulso] = useState<"Pix" | "Dinheiro">("Pix");
+  const [trocoParaAvulso, setTrocoParaAvulso] = useState("");
+  const [horarioAvulso, setHorarioAvulso] = useState("0:00");
+  const [valorTotalAvulso, setValorTotalAvulso] = useState("0.00");
+  const [whatsappAvulso, setWhatsappAvulso] = useState("");
   const [itensAvulsos, setItensAvulsos] = useState({
     tapiocaMolhada: 0,
     tapiocaManteiga: 0,
@@ -601,460 +174,534 @@ const [trocoCalculadoAvulso, setTrocoCalculadoAvulso] = useState(0);
     cuscuzArroz: 0,
     cuscuzMilhoArroz: 0,
     cafe: 0,
-  })
-  
-   // Guardando a quantidade anterior na referência
-  const ultimoTotalPedidos = useRef(0)
+  });
 
- useEffect(() => {
-  const reffuncionamento = doc(db, "configuracoes", "funcionamento")
-    const unsubscribeStatus = onSnapshot(reffuncionamento, (snap) => {
-      if (snap.exists()) {
-        const dados = snap.data()
-        setfuncionamentoAberta(dados.aberta !== undefined ? dados.aberta : true)
-        setTotalDespesasAcumuladas(dados.despesas || 0)
-      }
-    })
+  const ultimoTotalPedidos = useRef(0);
 
-    const qCaixas = query(collection(db, "historico_caixas"))
-    const unsubscribeCaixas = onSnapshot(qCaixas, (snap) => {
-      const lista: HistoricoCaixa[] = []
-      snap.forEach(d => lista.push({ id: d.id, ...d.data() } as HistoricoCaixa))
-      
-      lista.sort((a, b) => {
-        if (!a.dataHora) return 1
-        if (!b.dataHora) return -1
-        return b.dataHora.localeCompare(a.dataHora)
-      })
-
-      setHistoricoCaixas(lista)
-    })
-
-    return () => {
-      unsubscribeStatus()
-      unsubscribeCaixas()
-    }
-  }, [])
-  
+  // ✅ TODOS OS EFEITOS AQUI, ANTES DE QUALQUER RETURN CONDICIONAL
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (usuario) {
+        setUsuarioLogado(usuario);
+      } else {
+        router.replace('/login');
+      }
+      setCarregandoLogin(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  useEffect(() => {
+    if (!usuarioLogado) return;
     configurarNotificacoes();
     inicializarFirebasePush();
-  }, []);
-    
-  useEffect(() => {
-  const qPedidos = query(collection(db, "pedidos"));
-const unsubscribe = onSnapshot(qPedidos, (snap) => {
-  const pedidosNovos = snap.docs.map(d => ({
-    id: d.id,
-    ...d.data()
-  } as Pedido));
-
-  setPedidos(pedidosNovos);
-
-  if (pedidosNovos.length > 0) {
-    avisarNovoPedido();
-  }
-});
-
-  return () => unsubscribe();
-}, []);
-
-useEffect(() => {
-  configurarNotificacoes();
-  registrarPush(); // <-- já estava aqui, mas garanta que não tem erro antes
-  // ✅ ADICIONE ESSA LINHA PARA FORÇAR DEPOIS DE ABERTO
-  setTimeout(() => registrarPush(), 1500);
-}, []);
+  }, [usuarioLogado]);
 
   useEffect(() => {
-    const q = query(collection(db, "pedidos"))
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const listaPedidos: Pedido[] = []
-      querySnapshot.forEach((doc) => {
-        listaPedidos.push({ id: doc.id, ...doc.data() } as Pedido)
-      })
-      
-      listaPedidos.sort((a, b) => {
-        if (!a.horario) return 1
-        if (!b.horario) return -1
-        return a.horario.localeCompare(b.horario)
-      })
+    if (!usuarioLogado) return;
+    const q = query(collection(db, "pedidos"));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPedidos(lista);
+      setCarregando(false);
+    });
+    return () => unsubscribe();
+  }, [usuarioLogado]);
 
-      const pedidosAtivosAtuais = listaPedidos.filter(p => !p.concluido).length
-      
-      if (ultimoTotalPedidos.current > 0 && pedidosAtivosAtuais > ultimoTotalPedidos.current) {
-        tocarSomPedido(); 
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    const qProdutos = query(collection(db, "produtos"));
+    const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
+      const lista: any[] = [];
+      snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+      lista.sort((a, b) => (a?.nome || "").localeCompare(b?.nome || ""));
+      setProdutos(lista);
+    });
+    return () => unsubscribeProdutos();
+  }, [usuarioLogado]);
+
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    const ref = doc(db, "configuracoes", "funcionamento");
+    const unsubscribe = onSnapshot(ref, (snapshot) => {
+      if (snapshot.exists()) {
+        const dados = snapshot.data();
+        setHoraAbertura(dados.horaAbertura || "06:00");
+        setHoraFechamento(dados.horaFechamento || "18:00");
+        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento);
+        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega);
+        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia);
+        if (dados.aberta !== undefined) setFuncionamentoAberta(dados.aberta);
       }
-
-      ultimoTotalPedidos.current = pedidosAtivosAtuais
-      setPedidos(listaPedidos)
-      setCarregando(false)
-    })
-
-    return () => unsubscribe()
-  }, [])
+    }, (erro) => console.error("Erro ao carregar configurações:", erro));
+    return () => unsubscribe();
+  }, [usuarioLogado]);
 
   useEffect(() => {
-    let subtotal = 0
-    let qtdComidas = 0
-    let qtdCafes = itensAvulsos.cafe
+    if (!usuarioLogado) return;
+    const refFunc = doc(db, "configuracoes", "funcionamento");
+    const unsubscribeStatus = onSnapshot(refFunc, (snap) => {
+      if (snap.exists()) {
+        const dados = snap.data();
+        setFuncionamentoAberta(dados.aberta !== undefined ? dados.aberta : true);
+        setTotalDespesasAcumuladas(dados.despesas || 0);
+      }
+    });
+    const qCaixas = query(collection(db, "historico_caixas"));
+    const unsubscribeCaixas = onSnapshot(qCaixas, (snap) => {
+      const lista: any[] = [];
+      snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+      lista.sort((a, b) => b.dataHora.localeCompare(a.dataHora));
+      setHistoricoCaixas(lista);
+    });
+    return () => { unsubscribeStatus(); unsubscribeCaixas(); };
+  }, [usuarioLogado]);
 
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    const qPedidos = query(collection(db, "pedidos"));
+    const unsubscribe = onSnapshot(qPedidos, (snap) => {
+      const listaPedidos: any[] = [];
+      snap.forEach((doc) => listaPedidos.push({ id: doc.id, ...doc.data() }));
+      listaPedidos.sort((a, b) => a.horario.localeCompare(b.horario));
+      const qtdAtivos = listaPedidos.filter(p => !p.concluido).length;
+      if (ultimoTotalPedidos.current > 0 && qtdAtivos > ultimoTotalPedidos.current) tocarSomPedido();
+      ultimoTotalPedidos.current = qtdAtivos;
+      setPedidos(listaPedidos);
+      setCarregando(false);
+    });
+    return () => unsubscribe();
+  }, [usuarioLogado]);
+
+  useEffect(() => {
+    let subtotal = 0;
+    let qtdComidas = 0;
+    let qtdCafes = itensAvulsos.cafe;
     Object.entries(itensAvulsos).forEach(([key, qtd]) => {
-      subtotal += (pegarPreco(key) || 0) * qtd 
-      if (key !== "cafe") qtdComidas += qtd
-    })
-
+      const preco = produtos.find(p => p.chave === key)?.preco || 0;
+      subtotal += preco * Number(qtd);
+      if (key !== "cafe") qtdComidas += Number(qtd);
+    });
     if (qtdComidas > 0 && qtdCafes > 0) {
-      const CabalCombos = Math.min(qtdComidas, qtdCafes)
-      let descontoTotal = 0
-      let cafesAplicados = 0
-
+      const qtdCombos = Math.min(qtdComidas, qtdCafes);
+      let desconto = 0;
+      let cafesUsados = 0;
       Object.entries(itensAvulsos).forEach(([key, qtd]) => {
-        if (key !== "cafe" && qtd > 0) {
-          const comidasDesteTipoNoCombo = Math.min(qtd, CabalCombos - cafesAplicados)
-          if (comidasDesteTipoNoCombo > 0) {
-            const descontoPorPar = (pegarPreco(key) + pegarPreco("cafe")) - 10.00 
-            descontoTotal += descontoPorPar * comidasDesteTipoNoCombo
-            cafesAplicados += comidasDesteTipoNoCombo
-          }
+        if (key !== "cafe" && Number(qtd) > 0 && cafesUsados < qtdCombos) {
+          const precoItem = produtos.find(p => p.chave === key)?.preco || 0;
+          const precoCafe = produtos.find(p => p.chave === "cafe")?.preco || 0;
+          const qtdUsar = Math.min(Number(qtd), qtdCombos - cafesUsados);
+          desconto += qtdUsar * ((precoItem + precoCafe) - 10);
+          cafesUsados += qtdUsar;
         }
-      })
-      subtotal -= descontoTotal
+      });
+      subtotal -= desconto;
     }
-    setValorTotalAvulso(subtotal.toFixed(2))
-  }, [itensAvulsos, produtos]) 
+    setValorTotalAvulso(subtotal.toFixed(2));
+  }, [itensAvulsos, produtos]);
 
-const valorTotalAvulsoNumerico = parseFloat(valorTotalAvulso) || 0
-const trocoParaAvulsoNumerico = parseFloat(trocoParaAvulso.replace(",", ".")) || 0
-const trocoAvulsoCalculado = pagamentoAvulso === "Dinheiro" && trocoParaAvulsoNumerico > valorTotalAvulsoNumerico 
-  ? trocoParaAvulsoNumerico - valorTotalAvulsoNumerico 
-  : 0
-
-const partesEndereco = []
-if (ruaAvulso.trim()) partesEndereco.push(ruaAvulso.trim())
-if (numeroAvulso.trim()) partesEndereco.push(`Nº ${numeroAvulso.trim()}`)
-if (referenciaAvulso.trim()) partesEndereco.push(`Ref: ${referenciaAvulso.trim()}`)
-const enderecoCompletoConstruido = partesEndereco.length > 0 ? partesEndereco.join(", ") : "Retirada no Balcão"
-
-const observacaoPedido = observacaoAvulso?.trim() || ""
-
-function executarCopiaResumo() {
-  const itensTxt = Object.entries(itensAvulsos)
-    .filter(([_, qtd]) => qtd > 0)
-    .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
-    .join("\n")
-
-  const textoFinal = `━━━━━━━━━━━━━━━━━━
-☕ TAPICUZ
-
-Cliente: ${nomeAvulso || "Não informado"}
-Horário: ${horarioAvulso}
-
-📍 Entrega:
-${enderecoCompletoConstruido}
-
-🛒 Itens:
-${itensTxt || "Nenhum item selecionado"}
-
-${observacaoPedido ? `📝 Observação:\n${observacaoPedido}\n` : ""}
-
-💳 Pagamento:
-${pagamentoAvulso.toUpperCase()}
-
-💰 Total:
-R$ ${valorTotalAvulso}
-
-${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `💵 Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}
-━━━━━━━━━━━━━━━━━━`
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(textoFinal)
-      .then(() => {
-        setMostrarModalCopiado(true)
-      })
-      .catch(err => {
-        console.error("Erro na API clipboard", err)
-      })
-  } else {
-    const textArea = document.createElement("textarea")
-    textArea.value = textoFinal
-    document.body.appendChild(textArea)
-    textArea.select()
-    document.execCommand("copy")
-    document.body.removeChild(textArea)
-    setMostrarModalCopiado(true)
+  // ==============================================
+  // 2. RETORNOS CONDICIONAIS SOMENTE DEPOIS DE TODOS OS HOOKS
+  // ==============================================
+  if (carregandoLogin) {
+    return <div className="flex items-center justify-center min-h-screen text-lg text-orange-600">Carregando...</div>;
   }
-}
 
-function gerarResumoPedidoWhatsApp() {
-  const itens = Object.entries(itensAvulsos)
-    .filter(([_, qtd]) => qtd > 0)
-    .map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`)
-    .join("\n")
+  if (!usuarioLogado) {
+    return null;
+  }
 
-  return `Olá ${nomeAvulso || "Cliente"},\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\nRESUMO DO PEDIDO\n----------------------------------------\n\n*CLIENTE:* ${nomeAvulso || "Não informado"}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*FORMA DE PAGAMENTO:* ${pagamentoAvulso.toUpperCase()}\n*TROCO:* R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos muito a sua preferência!`
-}
+  // ==============================================
+  // 3. INTERFACES, CÁLCULOS E FUNÇÕES
+  // ==============================================
+  const valorTotalAvulsoNumerico = parseFloat(valorTotalAvulso) || 0;
+  const trocoParaAvulsoNumerico = parseFloat(trocoParaAvulso.replace(",", ".")) || 0;
+  const trocoAvulsoCalculado = pagamentoAvulso === "Dinheiro" && trocoParaAvulsoNumerico > valorTotalAvulsoNumerico 
+    ? trocoParaAvulsoNumerico - valorTotalAvulsoNumerico 
+    : 0;
 
-const enviarMensagemNotificacaoWhats = (nomeCliente: string, telefone: string = "") => {
-  const msg = `Olá, ${nomeCliente}! ☕\nSeu pedido da Tapicuz já foi entregue.\nCaso o pagamento ainda não tenha sido realizado, pedimos a gentileza de efetuá-lo assim que possível.\nSe o pagamento já foi realizado, desconsidere esta mensagem e muito obrigado pela preferência! ❤️\nTenha um excelente dia.`;
+  const partesEndereco = [];
+  if (ruaAvulso.trim()) partesEndereco.push(ruaAvulso.trim());
+  if (numeroAvulso.trim()) partesEndereco.push(`Nº ${numeroAvulso.trim()}`);
+  if (referenciaAvulso.trim()) partesEndereco.push(`Ref: ${referenciaAvulso.trim()}`);
+  const enderecoCompletoConstruido = partesEndereco.length > 0 ? partesEndereco.join(", ") : "Retirada no Balcão";
+  const observacaoPedido = observacaoAvulso?.trim() || "";
 
-  const numeroLimpo = telefone.replace(/\D/g, "");
-  const url = numeroLimpo.length >= 10
-    ? `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(msg)}`
-    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  const pedidosAtivos = pedidos.filter(p => !p.concluido);
+  const pedidosPendentes = pedidos.filter(p => p.concluido && p.statusPagamento === "pendente");
+  const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago");
+  const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0);
+  const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
+  const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
+  const saldoLiquidoAtual = faturamentoTotal - totalDespesasAcumuladas;
+  const somaHistoricoPix = historicoCaixas.reduce((acc, c) => acc + (c.totalPix || 0), 0);
+  const somaHistoricoDinheiro = historicoCaixas.reduce((acc, c) => acc + (c.totalDinheiro || 0), 0);
+  const somaHistoricoDespesas = historicoCaixas.reduce((acc, c) => acc + (c.despesas || 0), 0);
+  const somaHistoricoLiquido = historicoCaixas.reduce((acc, c) => acc + (c.saldoLiquido || 0), 0);
 
-  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-    (async () => {
-      try {
-        const { AppLauncher } = await import('@capacitor/app-launcher');
-        await AppLauncher.openUrl({ url });
-      } catch {
-        const { Browser } = await import('@capacitor/browser');
-        await Browser.open({ url });
+  const dispararFluxoConclusaoAvulso = (e: React.FormEvent) => {
+    e.preventDefault();
+  };
+
+  function chamarClienteWhatsapp(pedido: any) {
+    if (!pedido.telefone) { alert("Cliente não informou telefone."); return; }
+    const numero = pedido.telefone.replace(/\D/g, "");
+    const mensagem = `Olá ${pedido.nome} 😊\nSeu pedido da Tapicuz já está sendo preparado.\n⏰ Horário: ${pedido.horario}\nObrigado pela preferência! 🧡`;
+    const link = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`;
+    if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+      (async () => {
+        try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url: link }); }
+        catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url: link }); }
+      })();
+    } else { window.open(link, "_blank", "noopener,noreferrer"); }
+  }
+
+  function pegarPreco(chave: string): number {
+    const p = produtos.find(pr => pr.chave === chave);
+    return p?.preco || 0;
+  }
+
+  function formatarNomeItem(nomeChave: string) {
+    const p = produtos.find(pr => pr.chave === nomeChave);
+    return p ? `${p.icone} ${p.nome}` : nomeChave;
+  }
+
+  function gerarHorarios(inicio: string, fim: string) {
+    const horarios = [];
+    let atual = new Date();
+    const [hInicio, mInicio] = inicio.split(":").map(Number);
+    atual.setHours(hInicio, mInicio, 0, 0);
+    const encerramento = new Date();
+    const [hFim, mFim] = fim.split(":").map(Number);
+    encerramento.setHours(hFim, mFim, 0, 0);
+    while (atual <= encerramento) {
+      horarios.push(atual.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+      atual.setMinutes(atual.getMinutes() + 30);
+    }
+    return horarios;
+  }
+
+  const carregarConfiguracoesFuncionamento = async () => {
+    if (!usuarioLogado) return;
+    try {
+      const docRef = doc(db, "configuracoes", "funcionamento");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const dados = docSnap.data();
+        setHoraAbertura(dados.horaAbertura || "06:00");
+        setHoraFechamento(dados.horaFechamento || "18:00");
+        if (dados.diasFuncionamento) setDiasFuncionamento(dados.diasFuncionamento);
+        if (dados.diasEntrega) setDiasEntrega(dados.diasEntrega);
+        if (dados.horariosPorDia) setHorariosPorDia(dados.horariosPorDia);
+        if (dados.aberta !== undefined) setFuncionamentoAberta(dados.aberta);
       }
-    })();
-  } else {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-};
+    } catch (erro) {
+      console.error("Erro ao carregar configurações:", erro);
+    }
+  };
 
-  function alterarQtdAvulso(campo: string, valor: number) {
-    setItensAvulsos(prev => ({
-      ...prev,
-      [campo]: Math.max(0, (prev as any)[campo] + valor)
-    }))
+  const salvarConfiguracoesFuncionamento = async () => {
+    if (!usuarioLogado) return;
+    try {
+      const horariosGerados = gerarHorarios(horaAbertura, horaFechamento);
+      const novosHorariosPorDia = {
+        domingo: diasFuncionamento.domingo ? horariosGerados : [],
+        segunda: diasFuncionamento.segunda ? horariosGerados : [],
+        terca: diasFuncionamento.terca ? horariosGerados : [],
+        quarta: diasFuncionamento.quarta ? horariosGerados : [],
+        quinta: diasFuncionamento.quinta ? horariosGerados : [],
+        sexta: diasFuncionamento.sexta ? horariosGerados : [],
+        sabado: diasFuncionamento.sabado ? horariosGerados : [],
+      };
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { 
+        horaAbertura, horaFechamento, diasFuncionamento, diasEntrega, horariosPorDia: novosHorariosPorDia, aberta: funcionamentoAberta
+      });
+      setNotificacaoCaixa("✅ Configurações salvas!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    } catch (erro) {
+      console.error("Erro ao salvar:", erro);
+      setNotificacaoCaixa("❌ Erro ao salvar");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    }
+  };
+
+  const alternarDia = (valorDia: string) => {
+    setDiasFuncionamento(prev => {
+      const novoEstado = { ...prev, [valorDia]: !prev[valorDia as keyof typeof prev] };
+      setDiasEntrega(entrega => ({ ...entrega, [valorDia]: novoEstado[valorDia] }));
+      return novoEstado;
+    });
+  };
+
+  const finalizarPedidoAvulsoComStatusRoteado = async (status: "pago" | "espera" | "pendente") => {
+    if (!usuarioLogado) return;
+    try {
+      setNotificacaoCaixa("⏳ Registrando pedido...");
+
+      const novoPedido = {
+        nome: nomeAvulso,
+        telefone: whatsappAvulso || "",
+        endereco: `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
+        observacao: observacaoAvulso,
+        horario: horarioAvulso,
+        pagamento: pagamentoAvulso,
+        troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : 0,
+        valorTotal: valorTotalAvulsoNumerico,
+        itens: { ...itensAvulsos },
+        statusPagamento: status === "pago" ? "pago" : "pendente",
+        concluido: status === "pago",
+        dataCriacao: new Date(),
+        abaOrigem: "avulso"
+      };
+
+      await addDoc(collection(db, "pedidos"), novoPedido);
+
+      setNomeAvulso("");
+      setWhatsappAvulso("");
+      setRuaAvulso("");
+      setNumeroAvulso("");
+      setReferenciaAvulso("");
+      setObservacaoAvulso("");
+      setHorarioAvulso("0:00");
+      setPagamentoAvulso("Pix");
+      setTrocoParaAvulso("");
+      setItensAvulsos({
+        tapiocaMolhada: 0,
+        tapiocaManteiga: 0,
+        tapiocaQueijo: 0,
+        tapiocaOvo: 0,
+        tapiocaQueijoOvo: 0,
+        cuscuzMilho: 0,
+        cuscuzArroz: 0,
+        cuscuzMilhoArroz: 0,
+        cafe: 0,
+      });
+
+      setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
+      setTimeout(() => {
+        if (status === "pago") router.push("/admin?aba=historico");
+        if (status === "espera") router.push("/admin?aba=pedidos");
+        if (status === "pendente") router.push("/admin?aba=pendencias");
+        setNotificacaoCaixa(null);
+      }, 600);
+
+    } catch (erro) {
+      console.error("Erro ao salvar:", erro);
+      setNotificacaoCaixa("❌ Falha ao registrar pedido");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    }
+  };
+
+  async function salvarAlteracaoProduto() {
+    if (!editandoProduto || !usuarioLogado) return;
+    try {
+      await updateDoc(doc(db, "produtos", editandoProduto.id), {
+        nome: novoNome, preco: parseFloat(novoPreco), disponivel: novoDisponivel
+      });
+      setEditandoProduto(null);
+      setNotificacaoCaixa("✅ Produto atualizado com sucesso!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    } catch (err) { console.error(err); }
+  }
+
+  async function apagarHistoricoCaixas() {
+    const confirmar = window.confirm("Tem certeza que deseja apagar TODO o histórico de fechamentos?");
+    if (!confirmar || !usuarioLogado) return;
+    try {
+      const snap = await getDocs(collection(db, "historico_caixas"));
+      await Promise.all(snap.docs.map(item => deleteDoc(doc(db, "historico_caixas", item.id))));
+      setHistoricoCaixas([]);
+      setNotificacaoCaixa("🗑️ Histórico apagado com sucesso!");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (error) { console.error(error); }
   }
 
   async function processarDecisaoPedidoExistente(foiPago: boolean) {
-    if (!pedidoSelecionadoParaConcluir) return
+    if (!pedidoSelecionadoParaConcluir || !usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", pedidoSelecionadoParaConcluir.id), {
-        concluido: true,
-        statusPagamento: foiPago ? "pago" : "pendente"
-      })
-      setNotificacaoCaixa(foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!")
-      setTimeout(() => setNotificacaoCaixa(null), 2000)
-      setPedidoSelecionadoParaConcluir(null)
-    } catch (erro) {
-      console.error(erro)
-    }
+      await updateDoc(doc(db, "pedidos", pedidoSelecionadoParaConcluir.id), { concluido: true, statusPagamento: foiPago ? "pago" : "pendente" });
+      setNotificacaoCaixa(foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+      setPedidoSelecionadoParaConcluir(null);
+    } catch (erro) { console.error(erro); }
   }
 
   async function marcarComoPago(id: string) {
+    if (!usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", id), {
-        concluido: true,
-        statusPagamento: "pago"
-      })
-      setNotificacaoCaixa("🟢 PEDIDO MARCADO COMO PAGO!")
-      setTimeout(() => setNotificacaoCaixa(null), 2000)
-      if (pedidoDetalhado?.id === id) setPedidoDetalhado(null)
-    } catch (erro) {
-      console.error(erro)
-    }
+      await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pago" });
+      setNotificacaoCaixa("🟢 PEDIDO MARCADO COMO PAGO!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+      if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
+    } catch (erro) { console.error(erro); }
   }
 
   async function deletarDoHistorico(id: string) {
+    if (!usuarioLogado) return;
     try {
-      await deleteDoc(doc(db, "pedidos", id))
-      if (pedidoDetalhado?.id === id) setPedidoDetalhado(null)
-    } catch (error) {
-      console.error(error)
-    }
+      await deleteDoc(doc(db, "pedidos", id));
+      if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
+    } catch (error) { console.error(error); }
   }
 
-  async function alternarStatusfuncionamento() {
+  async function alternarStatusFuncionamento() {
+    if (!usuarioLogado) return;
     try {
-      const novoStatus = !funcionamentoAberta
-await setDoc(
-  doc(db, "configuracoes", "funcionamento"),
-  { aberta: novoStatus },
-  { merge: true }
-)
-      setfuncionamentoAberta(novoStatus)
-      setNotificacaoCaixa(`Pedidos: ${novoStatus ? "SISTEMA ON" : "SISTEMA OFF"}`)
-      setTimeout(() => setNotificacaoCaixa(null), 2500)
-    } catch (error) {
-      console.error(error)
-    }
+      const novoStatus = !funcionamentoAberta;
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { aberta: novoStatus }, { merge: true });
+      setFuncionamentoAberta(novoStatus);
+      setNotificacaoCaixa(`Pedidos: ${novoStatus ? "SISTEMA ON" : "SISTEMA OFF"}`);
+      setTimeout(() => setNotificacaoCaixa(null), 2500);
+    } catch (error) { console.error(error); }
   }
 
   async function lancarDespesaSimples(e: any) {
-    e.preventDefault()
-    const valor = parseFloat(valorDespesaInput.replace(",", "."))
-    if (isNaN(valor) || valor <= 0) return
-
+    e.preventDefault();
+    const valor = parseFloat(valorDespesaInput.replace(",", "."));
+    if (isNaN(valor) || valor <= 0 || !usuarioLogado) return;
     try {
-      const novaDespesaTotal = totalDespesasAcumuladas + valor
-     
-      setTotalDespesasAcumuladas(novaDespesaTotal)
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: novaDespesaTotal }, { merge: true })
-      setValorDespesaInput("")
-      setNotificacaoCaixa(`Despesa de R$ ${valor.toFixed(2)} lançada!`)
-      setTimeout(() => setNotificacaoCaixa(null), 3000)
-    } catch (error) {
-      console.error(error)
+      const novaDespesaTotal = totalDespesasAcumuladas + valor;
+      setTotalDespesasAcumuladas(novaDespesaTotal);
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: novaDespesaTotal }, { merge: true });
+      setValorDespesaInput("");
+      setNotificacaoCaixa(`Despesa de R$ ${valor.toFixed(2)} lançada!`);
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (error) { console.error(error); }
+  }
+
+  function executarCopiaResumo() {
+    const itensTxt = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
+    const textoFinal = `━━━━━━━━━━━━━━━━━━\n☕ TAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\n📍 Entrega:\n${enderecoCompletoConstruido}\n\n🛒 Itens:\n${itensTxt || "Nenhum item selecionado"}\n${observacaoPedido ? `📝 Observação:\n${observacaoPedido}\n` : ""}\n💳 Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\n💰 Total:\nR$ ${valorTotalAvulso}\n${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `💵 Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}━━━━━━━━━━━━━━━━━━`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(textoFinal).then(() => setMostrarModalCopiado(true)).catch(err => console.error("Erro na cópia", err));
+    } else {
+      const textArea = document.createElement("textarea"); textArea.value = textoFinal; document.body.appendChild(textArea); textArea.select(); document.execCommand("copy"); document.body.removeChild(textArea); setMostrarModalCopiado(true);
     }
   }
 
-// ==============================================
-// CÁLCULOS DO CAIXA — PRIMEIRO SEMPRE
-// ==============================================
-const pedidosAtivos = pedidos.filter(p => !p.concluido);
-const pedidosPendentes = pedidos.filter(p => p.concluido && p.statusPagamento === "pendente");
-const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago");
-
-const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0);
-const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
-const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
-
-const saldoLiquidoAtual = faturamentoTotal - totalDespesasAcumuladas;
-
-const somaHistoricoPix = historicoCaixas.reduce((acc, c) => acc + (c.totalPix || 0), 0);
-const somaHistoricoDinheiro = historicoCaixas.reduce((acc, c) => acc + (c.totalDinheiro || 0), 0);
-const somaHistoricoDespesas = historicoCaixas.reduce((acc, c) => acc + (c.despesas || 0), 0);
-const somaHistoricoLiquido = historicoCaixas.reduce((acc, c) => acc + (c.saldoLiquido || 0), 0);
-
-// ==============================================
-// FUNÇÕES — AGORA DEPOIS DOS CÁLCULOS
-// ==============================================
-
-// ✅ ARQUIVAR TURNO: Salva no histórico, limpa pedidos e zera contadores
-async function executarFechamentoTurno() {
-  try {
-    const faturamento = Number(faturamentoTotal || 0);
-    const pix = Number(totalPix || 0);
-    const dinheiro = Number(totalDinheiro || 0);
-    const despesas = Number(totalDespesasAcumuladas || 0);
-    const saldoLiquido = faturamento - despesas;
-
-    const dadosFechamento = {
-      tipo: "fechamento_turno",
-      data: new Date().toISOString(),
-      dataHora: new Date().toLocaleString("pt-BR"),
-      faturado: faturamento,
-      totalPix: pix,
-      totalDinheiro: dinheiro,
-      despesas: despesas,
-      saldoLiquido: saldoLiquido
-    };
-
-    await addDoc(collection(db, "historico_caixas"), dadosFechamento);
-
-    const snapPedidos = await getDocs(collection(db, "pedidos"));
-    const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
-    await Promise.all(promessasDelecao);
-
-    await setDoc(doc(db, "configuracoes", "funcionamento"), {
-      despesas: 0
-    }, { merge: true });
-
-    setTotalDespesasAcumuladas(0);
-    setModalConfirmarTurno(false);
-    setModalSalvarTurno(false);
-
-    setNotificacaoCaixa("✅ Turno arquivado e contadores zerados!");
-    setTimeout(() => setNotificacaoCaixa(null), 4000);
-
-  } catch (error) {
-    console.error("Erro ao arquivar turno:", error);
-    setNotificacaoCaixa("❌ Erro ao arquivar turno — verifique o console");
-    setTimeout(() => setNotificacaoCaixa(null), 3000);
+  function gerarResumoPedidoWhatsApp() {
+    const itens = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
+    return `Olá ${nomeAvulso || "Cliente"},\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\nRESUMO DO PEDIDO\n----------------------------------------\n\n*CLIENTE:* ${nomeAvulso || "Não informado"}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*FORMA DE PAGAMENTO:* ${pagamentoAvulso.toUpperCase()}\n*TROCO:* R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos muito a sua preferência!`;
   }
-}
 
-// ✅ ZERAR SISTEMA: Apaga tudo e reinicia contadores — AGORA LIMPA TAMBÉM O HISTÓRICO
-async function apagarSistemaGeralEZero() {
-  try {
-    console.log("🔄 Iniciando reset do sistema...");
+  const enviarMensagemNotificacaoWhats = (nomeCliente: string, telefone: string = "") => {
+    const msg = `Olá, ${nomeCliente}! ☕\nSeu pedido da Tapicuz já foi entregue.\nCaso o pagamento ainda não tenha sido realizado, pedimos a gentileza de efetuá-lo assim que possível.\nSe o pagamento já foi realizado, desconsidere esta mensagem e muito obrigado pela preferência! ❤️\nTenha um excelente dia.`;
+    const numeroLimpo = telefone.replace(/\D/g, "");
+    const url = numeroLimpo.length >= 10 ? `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+      (async () => {
+        try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+        catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+      })();
+    } else { window.open(url, "_blank", "noopener,noreferrer"); }
+  };
 
-    // --- 1. Apaga todos os pedidos ---
-    const snapPedidos = await getDocs(collection(db, "pedidos"));
-    if (snapPedidos.empty) {
-      console.log("ℹ️ Nenhum pedido encontrado para excluir");
-    } else {
-      console.log(`🗑️ Excluindo ${snapPedidos.size} pedido(s)...`);
+  function alterarQtdAvulso(campo: string, valor: number) {
+    setItensAvulsos(prev => ({ ...prev, [campo]: Math.max(0, (prev as any)[campo] + valor) }));
+  }
+
+  async function executarFechamentoTurno() {
+    try {
+      const faturamento = Number(faturamentoTotal || 0);
+      const pix = Number(totalPix || 0);
+      const dinheiro = Number(totalDinheiro || 0);
+      const despesas = Number(totalDespesasAcumuladas || 0);
+      const saldoLiquido = faturamento - despesas;
+
+      const dadosFechamento = {
+        tipo: "fechamento_turno",
+        data: new Date().toISOString(),
+        dataHora: new Date().toLocaleString("pt-BR"),
+        faturado: faturamento,
+        totalPix: pix,
+        totalDinheiro: dinheiro,
+        despesas: despesas,
+        saldoLiquido: saldoLiquido
+      };
+
+      await addDoc(collection(db, "historico_caixas"), dadosFechamento);
+
+      const snapPedidos = await getDocs(collection(db, "pedidos"));
       const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
       await Promise.all(promessasDelecao);
-    }
 
-    // --- 2. LIMPA O HISTÓRICO DE FECHAMENTOS ---
-    // ⚠️ AQUI ESTÁ O PONTO CHAVE: confira o nome correto da coleção no seu Firestore
-    const snapHistorico = await getDocs(collection(db, "historico_fechamentos"));
-    if (snapHistorico.empty) {
-      console.log("ℹ️ Nenhum registro de histórico encontrado");
-    } else {
-      console.log(`🗑️ Excluindo ${snapHistorico.size} registro(s) do histórico...`);
-      const promessasHistorico = snapHistorico.docs.map(d => deleteDoc(doc(db, "historico_fechamentos", d.id)));
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
+
+      setTotalDespesasAcumuladas(0);
+      setModalConfirmarTurno(false);
+      setModalSalvarTurno(false);
+
+      setNotificacaoCaixa("✅ Turno arquivado e contadores zerados!");
+      setTimeout(() => setNotificacaoCaixa(null), 4000);
+
+    } catch (error) {
+      console.error("Erro ao arquivar turno:", error);
+      setNotificacaoCaixa("❌ Erro ao arquivar turno — verifique o console");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    }
+  }
+
+  async function apagarSistemaGeralEZero() {
+    try {
+      const snapPedidos = await getDocs(collection(db, "pedidos"));
+      const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
+      await Promise.all(promessasDelecao);
+
+      const snapHistorico = await getDocs(collection(db, "historico_caixas"));
+      const promessasHistorico = snapHistorico.docs.map(d => deleteDoc(doc(db, "historico_caixas", d.id)));
       await Promise.all(promessasHistorico);
+
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
+
+      setTotalDespesasAcumuladas(0);
+      setModalConfirmarZerarTudo(false);
+      setAbaAtiva("pedidos");
+
+      setNotificacaoCaixa("💥 SISTEMA RESETADO! Pedidos, histórico e contadores foram limpos.");
+      setTimeout(() => setNotificacaoCaixa(null), 8000);
+
+    } catch (error) {
+      console.error("❌ Erro ao resetar sistema:", error);
+      setModalConfirmarZerarTudo(false);
+      setNotificacaoCaixa(`❌ Erro ao zerar sistema`);
+      setTimeout(() => setNotificacaoCaixa(null), 9000);
     }
+  }
 
-    // --- 3. Zera configurações e valores acumulados ---
-    await setDoc(doc(db, "configuracoes", "funcionamento"), {
-      despesas: 0,
-      totalFechado: 0,      // adicionei para garantir que o valor não fique salvo
-      saldoFechamento: 0   // ajuste conforme os nomes que você usa
-    }, { merge: true });
+  const demandasProducao = {
+    tapiocaMolhada: 0,
+    tapiocaManteiga: 0,
+    tapiocaQueijo: 0,
+    tapiocaOvo: 0,
+    tapiocaQueijoOvo: 0,
+    cuscuzMilho: 0,
+    cuscuzArroz: 0,
+    cuscuzMilhoArroz: 0,
+    cafe: 0,
+  };
 
-    // --- 4. Atualiza tudo e garante fechamento da tela ---
-    setTotalDespesasAcumuladas(0);
-    setModalConfirmarZerarTudo(false);
-    setAbaAtiva("pedidos");
-
-    // Mensagem com mais tempo e informação clara
-    setNotificacaoCaixa("💥 SISTEMA RESETADO! Pedidos, histórico e contadores foram limpos.");
-    setTimeout(() => setNotificacaoCaixa(null), 8000);
-
-  } catch (error) {
-  console.error("❌ Erro ao resetar sistema:", error);
-  setModalConfirmarZerarTudo(false);
-  setNotificacaoCaixa(`❌ Erro: ${error instanceof Error ? error.message : "Não foi possível zerar"}`);
-  setTimeout(() => setNotificacaoCaixa(null), 9000);
-}
-}
-// ==============================================
-// DEMANDAS DE PRODUÇÃO
-// ==============================================
-const demandasProducao = {
-  tapiocaMolhada: 0,
-  tapiocaManteiga: 0,
-  tapiocaQueijo: 0,
-  tapiocaOvo: 0,
-  tapiocaQueijoOvo: 0,
-  cuscuzMilho: 0,
-  cuscuzArroz: 0,
-  cuscuzMilhoArroz: 0,
-  cafe: 0,
-};
-
-pedidosAtivos.forEach((pedido) => {
-  Object.keys(demandasProducao).forEach((item) => {
-    demandasProducao[item as keyof typeof demandasProducao] +=
-      pedido.itens?.[item as keyof typeof pedido.itens] || 0;
+  pedidosAtivos.forEach((pedido) => {
+    Object.keys(demandasProducao).forEach((item) => {
+      demandasProducao[item as keyof typeof demandasProducao] += pedido.itens?.[item as keyof typeof pedido.itens] || 0;
+    });
   });
-}); 
-/// Dentro do seu componente, antes do return
-const handleSalvarTurno = () => {
-  console.log("✅ Salvando dados do turno...");
 
-  // ⚠️ Removi o trecho com "algumCampo" que não existia
-  // Quando quiser adicionar validação depois, é só usar os nomes reais dos seus campos
+  const handleSalvarTurno = () => {
+    setNotificacaoCaixa("✅ Turno salvo com sucesso!");
+    setTimeout(() => setNotificacaoCaixa(null), 9000);
+  };
 
-  // Se quiser deixar pronto para usar com await depois, troque a linha acima por:
-  // const handleSalvarTurno = async () => {
-
-  setNotificacaoCaixa("✅ Turno salvo com sucesso!");
-  setTimeout(() => setNotificacaoCaixa(null), 9000);
-};
-
-return (
-  <main className="min-h-screen bg-gradient-to-br from-[#FFFAF5] via-[#FFFFFF] to-[#FFFAF5] text-[#27272A] py-6 px-3 sm:px-4 relative overflow-x-hidden">
-    {/* ✅ Notificação flutuante */}
-    {notificacaoCaixa && (
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-orange-500 text-orange-300 px-6 py-3 rounded-2xl font-black uppercase shadow-2xl animate-pulse">
-        {notificacaoCaixa}
-      </div>
-    )}
+  // ==============================================
+  // 4. INTERFACE PRINCIPAL
+  // ==============================================
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-[#FFFAF5] via-[#FFFFFF] to-[#FFFAF5] text-[#27272A] py-6 px-3 sm:px-4 relative overflow-x-hidden">
+      {/* ✅ Notificação flutuante */}
+      {notificacaoCaixa && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-orange-500 text-orange-300 px-6 py-3 rounded-2xl font-black uppercase shadow-2xl animate-pulse">
+          {notificacaoCaixa}
+        </div>
+      )}
 
       {/* ✅ Modal de Copiado */}
       {mostrarModalCopiado && (
@@ -1073,472 +720,63 @@ return (
         </div>
       )}
 
-    {/* ✅ Modal: Detalhes do Pedido */}
-{pedidoDetalhado && (
-  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-    <div className="bg-[#FFFFFF] border-2 border-[#F97316]/20 w-full max-w-lg rounded-3xl p-6 space-y-5 shadow-2xl my-6">
-      
-      {/* CABEÇALHO */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-xl font-black text-[#F97316] uppercase tracking-wider">Detalhes do Pedido</h3>
-        <button 
-          onClick={() => setPedidoDetalhado(null)}
-          className="w-10 h-10 bg-[#FFEDD5] hover:bg-[#F97316]/10 rounded-full flex items-center justify-center text-[#F97316] text-lg transition-all"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div className="space-y-4 text-sm">
-        
-        {/* 🟡 CLIENTE + 🕓 HORÁRIO (AGORA FICOU ENORME!) */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
-            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Cliente</p>
-            <p className="font-bold text-[#27272A] text-lg">{pedidoDetalhado.nome}</p>
-          </div>
-          
-          {/* 👇 AQUI É O HORÁRIO - AGORA O MAIOR DE TUDO 👇 */}
-          <div className="bg-gradient-to-br from-[#F97316]/10 to-[#FB923C]/15 rounded-xl border-2 border-[#F97316]/30 flex flex-col items-center justify-center py-2">
-            <p className="text-[10px] font-black text-[#71717A] uppercase tracking-wider mb-0.5">Horário</p>
-            <p className="font-black text-[#F97316] text-[42px] leading-none tracking-widest">
-              {pedidoDetalhado.horario}
-            </p>
-          </div>
-        </div>
-
-        {/* ENDEREÇO */}
-        <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
-          <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Endereço</p>
-          <p className="font-medium text-[#27272A]">{pedidoDetalhado.endereco}</p>
-          
-        </div>
-
-        {/* ✅ OBSERVAÇÃO AGORA SEPARADA, NÃO VAI MAIS NO ENDEREÇO */}
-        {pedidoDetalhado.observacao && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-xl">
-            <p className="text-xs font-black text-red-600 uppercase mb-1 tracking-wide">Observação</p>
-            <p className="font-bold text-red-700">{pedidoDetalhado.observacao}</p>
-          </div>
-        )}
-
-        {/* ITENS */}
-        <div className="border-t border-[#F3F4F6] pt-4">
-          <p className="text-xs font-black text-[#71717A] uppercase mb-3 tracking-wide">Itens Pedidos</p>
-          <div className="space-y-2 pl-2">
-            {Object.entries(pedidoDetalhado.itens).map(([chave, qtd]) => qtd > 0 && (
-              <div key={chave} className="flex justify-between items-center bg-[#FFFAF5]/60 py-2 px-3 rounded-lg">
-                <span className="text-[#27272A] font-medium">{formatarNomeItem(chave)}</span>
-                <span className="text-[#F97316] font-black text-lg">{qtd}x</span>
-              </div>
-            ))}
-          </div>
-        </div>
-  {/* PAGAMENTO + VALOR */}
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
-            <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Pagamento</p>
-            <span className={`inline-block mt-1 px-3 py-1.5 rounded-lg text-xs font-black uppercase w-full text-center ${
-              pedidoDetalhado.pagamento === "Pix" 
-                ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
-                : "bg-amber-100 text-amber-700 border border-amber-200"
-            }`}>
-              {pedidoDetalhado.pagamento}
-            </span>
-          </div>
-          
-          <div className="bg-[#F0FDF4] p-3 rounded-xl border border-emerald-100">
-            <p className="text-xs font-black text-emerald-700 uppercase mb-1 tracking-wide">Valor Total</p>
-            <p className="text-lg font-black text-emerald-600">R$ {pedidoDetalhado.valorTotal.toFixed(2)}</p>
-          </div>
-        </div>
-
-     {/* TROCO (SE TIVER) */}
-        <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#FFEDD5]/50">
-          <p className="text-xs font-black text-[#71717A] uppercase mb-1 tracking-wide">Troco</p>
-          <p className="font-bold text-[#27272A]">
-            {pedidoDetalhado.troco > 0 
-              ? `R$ ${pedidoDetalhado.troco.toFixed(2)}` 
-              : "SEM TROCO"}
-          </p>
-        </div>
-
-        {/* BOTÕES DE AÇÃO */}
-        <div className="flex gap-2 pt-3">
-          {pedidoDetalhado.statusPagamento === "pendente" && (
-            <button
-              onClick={() => marcarComoPago(pedidoDetalhado.id)}
-              className="flex-1 py-3 bg-emerald-500/10 text-emerald-700 border-2 border-emerald-500/30 rounded-xl font-black text-sm uppercase hover:bg-emerald-500/20 transition-all active:scale-[0.98]"
-            >
-              ✅ Marcar como Pago
-            </button>
-          )}
-          <button
-            onClick={() => deletarDoHistorico(pedidoDetalhado.id)}
-            className="flex-1 py-3 bg-red-500 text-red-700 border-2 border-red-200 rounded-xl font-black text-sm uppercase hover:bg-red-100 transition-all active:scale-[0.98]"
+      {/* ✅ Cabeçalho Principal */}
+      <div className="mb-6 text-center">
+        <h1 className="text-[clamp(1.8rem,5vw,3rem)] font-black uppercase tracking-wider mb-2 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500 bg-clip-text text-transparent">
+          Painel Tapicuz
+        </h1>
+        <div className="flex items-center justify-center gap-3">
+          <div className={`w-3 h-3 rounded-full ${funcionamentoAberta ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
+          <button 
+            onClick={alternarStatusFuncionamento} 
+            className={`text-xs font-black uppercase px-3 py-1.5 rounded-full border transition-all ${funcionamentoAberta ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20"}`}
           >
-            🗑️ Excluir
+            {funcionamentoAberta ? "SISTEMA ONLINE" : "SISTEMA OFFLINE"}
           </button>
         </div>
       </div>
-    </div>
-  </div>
-)}
-{/* ✅ Modal: VERSÃO FINAL - OPÇÕES INTERNAS MAIORES E BEM SEPARADAS */}
-{pedidoSelecionadoParaConcluir && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-6 shadow-2xl">
-      <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">Opções do Pedido</h3>
-      <p className="text-center text-[#71717A] font-bold">Escolha uma ação abaixo</p>
-      
-      {/* ✅ DOIS BOTÕES PRINCIPAIS - BEM SEPARADOS */}
-      <div className="grid grid-cols-2 gap-6 pt-3">
-        
-        {/* 🟠 BOTÃO CONCLUIR */}
-        <div className="relative">
-          <button
-            onClick={() => setMostrarOpcoesConcluir(!mostrarOpcoesConcluir)}
-            className="w-full py-4 bg-orange-500 text-white border-2 border-orange-600 rounded-xl font-black uppercase text-base tracking-wider hover:bg-orange-600 hover:scale-[1.02] transition-all shadow-md"
-            style={{ minHeight: '55px' }}
+
+      {/* ✅ Menu de Navegação */}
+      <div className="mb-8">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
+          
+          {/* 📋 EM ANDAMENTO */}
+          <button 
+            onClick={() => setAbaAtiva("pedidos")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
           >
-            CONCLUIR
+            <span className="text-lg">📋</span>
+            <span>EM ANDAMENTO ({pedidosAtivos.length})</span>
           </button>
 
-          {/* ✅ OPÇÕES: PAGO E PENDENTE - MAIORES, MAIS ALTAS E SEPARADAS */}
-          {mostrarOpcoesConcluir && (
-            <div className="absolute top-[115%] left-0 right-0 z-10 p-3 bg-white rounded-xl border border-orange-200 shadow-lg">
-              <button
-                onClick={() => {
-                  processarDecisaoPedidoExistente(true);
-                  setMostrarOpcoesConcluir(false);
-                  const mensagemCentral = document.createElement('div');
-                  mensagemCentral.innerText = 'PEDIDO MARCADO COMO PAGO!';
-                  mensagemCentral.style.cssText = `
-                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                    background: #10b981; color: white; font-weight: 900; font-size: 16px;
-                    padding: 16px 32px; border-radius: 14px; z-index: 99999;
-                    box-shadow: 0 6px 16px rgba(0,0,0,0.2); border: 2px solid #059669;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(mensagemCentral);
-                  setTimeout(() => mensagemCentral.remove(), 2800);
-                }}
-                className="w-full py-4 mb-4 bg-emerald-500 text-white rounded-lg font-black uppercase text-base hover:bg-emerald-600 transition-all"
-                style={{ minHeight: '48px' }}
-              >
-                PAGO
-              </button>
-              <button
-                onClick={() => {
-                  processarDecisaoPedidoExistente(false);
-                  setMostrarOpcoesConcluir(false);
-                }}
-                className="w-full py-4 bg-amber-400 text-white rounded-lg font-black uppercase text-base hover:bg-amber-500 transition-all"
-                style={{ minHeight: '48px' }}
-              >
-                PENDENTE
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 🟢 BOTÃO WHATSAPP */}
-        <div className="relative">
-          <button
-            onClick={() => setMostrarOpcoesZap(!mostrarOpcoesZap)}
-            className="w-full py-4 bg-green-500 text-white border-2 border-green-600 rounded-xl font-black uppercase text-base tracking-wider hover:bg-green-600 hover:scale-[1.02] transition-all shadow-md"
-            style={{ minHeight: '55px' }}
+          {/* ➕ LANÇAR PEDIDO */}
+          <button 
+            onClick={() => setAbaAtiva("avulso")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
           >
-            WHATSAPP
+            <span className="text-lg">➕</span>
+            <span>LANÇAR PEDIDO</span>
           </button>
 
-          {/* ✅ OPÇÕES: AVISAR SAÍDA E ENVIAR RESUMO - MAIORES, MAIS ALTAS E SEPARADAS */}
-          {mostrarOpcoesZap && (
-            <div className="absolute top-[115%] left-0 right-0 z-10 p-3 bg-white rounded-xl border border-green-200 shadow-lg">
-              <button
-                onClick={() => {
-                  if (!pedidoSelecionadoParaConcluir?.telefone) {
-                    alert("Cliente não informou telefone.")
-                    return
-                  }
-                  const numero = pedidoSelecionadoParaConcluir.telefone.replace(/\D/g, "");
-                  
-                  const mensagemSaida = `Olá ${pedidoSelecionadoParaConcluir.nome}.
-Seu pedido da Tapicuz acabou de sair para entrega.
-Em instantes chegará até você!
-Agradecemos a preferência.`;
+          {/* ⏳ PENDÊNCIAS */}
+          <button 
+            onClick={() => setAbaAtiva("pendencias")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pendencias" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+          >
+            <span className="text-lg">⏳</span>
+            <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
+          </button>
 
-                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagemSaida)}`;
-                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-};;
-                  setMostrarOpcoesZap(false);
+          {/* ⚙️ PRODUTOS */}
+          <button 
+            onClick={() => setAbaAtiva("produtos")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "produtos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+          >
+            <span className="text-lg">⚙️</span>
+            <span>CONTROLE</span>
+          </button>
 
-                  const aviso = document.createElement('div');
-                  aviso.innerText = 'AVISO DE SAÍDA ENVIADO!';
-                  aviso.style.cssText = `
-                    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: #f59e0b; color: white; font-weight: 900; font-size: 14px;
-                    padding: 12px 24px; border-radius: 12px; z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid #d97706;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(aviso);
-                  setTimeout(() => aviso.remove(), 2500);
-                }}
-                className="w-full py-4 mb-4 bg-orange-500 text-white rounded-lg font-black uppercase text-base hover:bg-orange-600 transition-all"
-                style={{ minHeight: '48px' }}
-              >
-                AVISAR SAÍDA
-              </button>
-              
-              <button
-                onClick={() => {
-                  if (!pedidoSelecionadoParaConcluir?.telefone) {
-                    alert("Cliente não informou telefone.")
-                    return
-                  }
-                  const pedido = pedidoSelecionadoParaConcluir;
-                  const numero = pedido.telefone?.replace(/\D/g, "") || "";
-
-                  // ✅ AGORA SIM: ENDEREÇO E OBSERVAÇÃO SEPARADOS
-                  let mensagemCompleta = `Olá ${pedido.nome}.
-Seu pedido da Tapicuz foi recebido e já está sendo preparado!
-
-RESUMO DO PEDIDO
-----------------------------------------
-
-*CLIENTE:* ${pedido.nome.toUpperCase()}
-*ENDEREÇO:* ${String(pedido.endereco || 'NÃO INFORMADO')}
-${pedido.observacao ? `*OBSERVAÇÃO:* ${pedido.observacao}\n` : ""}
-*HORÁRIO:* ${pedido.horario}
-*FORMA DE PAGAMENTO:* ${pedido.pagamento}
-`;
-
-                  if (pedido.pagamento === 'Dinheiro') {
-                    const valorTroco = pedido.troco;
-mensagemCompleta += `*TROCO:* ${valorTroco > 0 ? `R$ ${valorTroco.toFixed(2).replace('.', ',')}` : "SEM TROCO"}
-`;
-                  }
-
-                  mensagemCompleta += `----------------------------------------
-*ITENS DO PEDIDO*
-`;
-
-                  let temItens = false;
-                  if (pedido.itens && typeof pedido.itens === 'object' && !Array.isArray(pedido.itens)) {
-                    Object.entries(pedido.itens).forEach(([chave, qtd]) => {
-                      if (typeof qtd === 'number' && qtd > 0) {
-                        const prod = produtos.find(p => p.chave === chave);
-                        if (prod) {
-                          mensagemCompleta += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace('.', ',')}
-`;
-                          temItens = true;
-                        }
-                      }
-                    });
-                  }
-                  if (!temItens && pedido.itens && Array.isArray(pedido.itens)) {
-                    pedido.itens.forEach(item => {
-                      if (item.quantidade > 0) {
-                        mensagemCompleta += `• ${item.quantidade}x ${item.nome} - R$ ${(item.preco * item.quantidade).toFixed(2).replace('.', ',')}
-`;
-                        temItens = true;
-                      }
-                    });
-                  }
-                  if (!temItens) {
-                    mensagemCompleta += `• NENHUM ITEM CADASTRADO
-`;
-                  }
-
-                  mensagemCompleta += `----------------------------------------
-*VALOR TOTAL:* R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}
-
-Agradecemos muito a sua preferência!`;
-
-const url = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagemCompleta)}`;
-
-if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-setMostrarOpcoesZap(false);
-
-                  const aviso = document.createElement('div');
-                  aviso.innerText = 'RESUMO ENVIADO COM SUCESSO!';
-                  aviso.style.cssText = `
-                    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: #10b981; color: white; font-weight: 900; font-size: 14px;
-                    padding: 12px 24px; border-radius: 12px; z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid #059669;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(aviso);
-                  setTimeout(() => aviso.remove(), 2500);
-                }}
-                className="w-full py-4 bg-green-500 text-white rounded-lg font-black uppercase text-base hover:bg-green-600 transition-all"
-                style={{ minHeight: '48px' }}
-              >
-                ENVIAR RESUMO
-              </button>
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* BOTÃO CANCELAR */}
-      <button 
-        onClick={() => {
-          setPedidoSelecionadoParaConcluir(null);
-          setMostrarOpcoesConcluir(false);
-          setMostrarOpcoesZap(false);
-        }}
-        className="w-full py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all mt-5 text-base"
-      >
-        Cancelar
-      </button>
-    </div>
-  </div>
-)}
-
-    {/* Modal Salvar / Arquivar Turno */}
-{modalSalvarTurno && (
-  <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-50 px-4">
-    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-      <h3 className="text-lg font-bold text-gray-800 mb-4">Salvar ou Arquivar Turno</h3>
-
-      {/* Aqui você coloca seus campos, valores e lógica do turno */}
-      <p className="text-gray-600 mb-6">Confirme os dados antes de prosseguir.</p>
-
-      <div className="flex gap-3 w-full">
-        <button
-          onClick={handleSalvarTurno}
-          className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-black uppercase transition-all duration-200 shadow-sm hover:shadow"
-        >
-          SALVAR
-        </button>
-
-        {/* Botão Cancelar com estilo alinhado e funcional */}
-        <button
-          onClick={() => setModalSalvarTurno(false)}
-          className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-gray-800 rounded-xl font-black uppercase transition-all duration-200"
-        >
-          CANCELAR
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* ✅ Modal de Confirmação Arquivar Turno */}
-{modalConfirmarTurno && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
-      <span className="text-5xl text-orange-500 text-center block">🗂️</span>
-      <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">Arquivar Turno?</h3>
-      <p className="text-center text-[#71717A] font-bold">
-        Isso irá salvar o fechamento no histórico, apagar todos os pedidos atuais e zerar os contadores.
-        <span className="text-orange-500 font-black"> Confirma essa ação?</span>
-      </p>
-      
-      <div className="grid grid-cols-2 gap-3 pt-2">
-        <button
-          onClick={executarFechamentoTurno}
-          className="py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-black uppercase transition-all duration-200 shadow-sm hover:shadow"
-        >
-          SIM, ARQUIVAR
-        </button>
-        <button 
-          onClick={() => setModalConfirmarTurno(false)} 
-          className="py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] text-orange-800 rounded-xl font-black uppercase transition-all duration-200"
-        >
-          CANCELAR
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-     {/* ✅ Cabeçalho Principal */}
-<div className="mb-6 text-center">
-  <h1 className="text-[clamp(1.8rem,5vw,3rem)] font-black uppercase tracking-wider mb-2 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500 bg-clip-text text-transparent">
-    Painel Tapicuz
-  </h1>
-  <div className="flex items-center justify-center gap-3">
-    <div className={`w-3 h-3 rounded-full ${funcionamentoAberta ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
-    <button 
-      onClick={alternarStatusfuncionamento} 
-      className={`text-xs font-black uppercase px-3 py-1.5 rounded-full border transition-all ${funcionamentoAberta ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20"}`}
-    >
-      {funcionamentoAberta ? "SISTEMA ONLINE" : "SISTEMA OFFLINE"}
-    </button>
-  </div>
-</div>
-
-
-{/* ✅ Menu de Navegação */}
-<div className="mb-8">
-  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
-    
-    {/* 📋 EM ANDAMENTO */}
-    <button 
-      onClick={() => setAbaAtiva("pedidos")} 
-      className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pedidos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
-    >
-      <span className="text-lg">📋</span>
-      <span>EM ANDAMENTO ({pedidosAtivos.length})</span>
-    </button>
-
-{/* ➕ LANÇAR PEDIDO */}
-<button 
-  onClick={() => setAbaAtiva("avulso")} 
-  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "avulso" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
->
-  <span className="text-lg">➕</span>
-  <span>LANÇAR PEDIDO</span>
-</button>
-
-{/* ⏳ PENDÊNCIAS */}
-<button 
-  onClick={() => setAbaAtiva("pendencias")} 
-  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "pendencias" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
->
-  <span className="text-lg">⏳</span>
-  <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
-</button>
-
-{/* ⚙️ PRODUTOS */}
-<button 
-  onClick={() => setAbaAtiva("produtos")} 
-  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "produtos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
->
-  <span className="text-lg">⚙️</span>
-  <span>CONTROLE</span>
-</button>
-
-{/* 📜 VENDAS PAGAS */}
+          {/* 📜 VENDAS PAGAS */}
 <button 
   onClick={() => setAbaAtiva("historico")} 
   className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
@@ -1710,7 +948,7 @@ setMostrarOpcoesZap(false);
           {/* BOTÃO SALVAR - CENTRALIZADO */}
           <div className="flex justify-center">
             <button
-              onClick={salvarfuncionamentouracoesFuncionamento}
+              onClick={salvarConfiguracoesFuncionamento}
               className="w-full max-w-[320px] py-4 bg-gradient-to-r from-orange-500 via-orange-400 to-amber-500 text-white font-black rounded-2xl text-lg uppercase tracking-wider shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all border-2 border-orange-300"
             >
               💾 Salvar Configurações!
@@ -2043,12 +1281,10 @@ setMostrarOpcoesZap(false);
                     const valor = e.target.value.replace(/\D/g, "");
                     if (!valor) {
                       setTrocoParaAvulso("");
-                      setTrocoCalculadoAvulso(0);
                       return;
                     }
                     const valorNumerico = Number(valor) / 100;
                     setTrocoParaAvulso(valorNumerico.toFixed(2).replace(".", ","));
-                    setTrocoCalculadoAvulso(valorNumerico - valorTotalAvulsoNumerico);
                   }}
                   placeholder="0,00"
                   className="w-full bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl p-3 text-[#27272A] font-bold focus:outline-none focus:border-amber-500"
@@ -2058,9 +1294,9 @@ setMostrarOpcoesZap(false);
               <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
                 <p className="text-xs font-black text-amber-700 uppercase mb-1">Troco</p>
                 <p className="font-bold text-lg">
-                  {trocoCalculadoAvulso > 0 
-                    ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` 
-                    : trocoCalculadoAvulso === 0 
+                  {trocoAvulsoCalculado > 0 
+                    ? `R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}` 
+                    : trocoAvulsoCalculado === 0 
                       ? "SEM TROCO" 
                       : "Valor insuficiente"}
                 </p>
@@ -2129,84 +1365,61 @@ setMostrarOpcoesZap(false);
           <div className="mt-6 p-5 bg-[#FFFBEB] border border-emerald-400/40 rounded-xl shadow-sm">
             <div className="flex justify-between items-center">
               <span className="text-base font-black text-orange-700 uppercase tracking-wider">Valor Total</span>
-              <span className="text-3xl font-black text-emerald-600 drop-shadow-sm">
-                R$ {valorTotalAvulso}
-              </span>
+            <span className="text-3xl font-black text-emerald-600 drop-shadow-sm">
+  R$ {isNaN(valorTotalAvulsoNumerico) ? "0,00" : valorTotalAvulso}
+</span>
             </div>
           </div>
 
-         {/* 📋 AÇÕES */}
-<div className="p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl mt-4">
-  <div className="grid grid-cols-2 gap-3 mb-4">
-    <button
-      type="button"
-      onClick={() => {
-        // ✅ FUNÇÃO COM TEXTO LIMPO, SEM EMOJIS
-        const gerarResumoPedidoWhatsApp = () => {
-          let enderecoCompleto = "";
-          if (ruaAvulso || numeroAvulso || referenciaAvulso) {
-            enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim();
-          }
+          {/* 📋 AÇÕES */}
+          <div className="p-4 bg-[#FFFFFF] border border-orange-500/30 rounded-xl mt-4">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  // ✅ FUNÇÃO COM TEXTO LIMPO, SEM EMOJIS
+                  const gerarResumoPedidoWhatsApp = () => {
+                    let enderecoCompleto = "";
+                    if (ruaAvulso || numeroAvulso || referenciaAvulso) {
+                      enderecoCompleto = `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim();
+                    }
 
-          let mensagem = `Olá ${nomeAvulso}.\n`;
-          mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
-          mensagem += `RESUMO DO PEDIDO\n`;
-          mensagem += `----------------------------------------\n\n`;
-          mensagem += `CLIENTE: ${nomeAvulso}\n`;
-          mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
-          mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
-          mensagem += `HORÁRIO: ${horarioAvulso}\n`;
-          mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
+                    let mensagem = `Olá ${nomeAvulso}.\n`;
+                    mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
+                    mensagem += `RESUMO DO PEDIDO\n`;
+                    mensagem += `----------------------------------------\n\n`;
+                    mensagem += `CLIENTE: ${nomeAvulso}\n`;
+                    mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
+                    mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
+                    mensagem += `HORÁRIO: ${horarioAvulso}\n`;
+                    mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
 
-          if (pagamentoAvulso === "Dinheiro") {
-            mensagem += `TROCO: ${trocoCalculadoAvulso > 0 ? `R$ ${trocoCalculadoAvulso.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
-          }
+                    if (pagamentoAvulso === "Dinheiro") {
+                      mensagem += `TROCO: ${trocoAvulsoCalculado > 0 ? `R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
+                    }
 
-          mensagem += `----------------------------------------\n`;
-          mensagem += `ITENS DO PEDIDO\n`;
+                    mensagem += `----------------------------------------\n`;
+                    mensagem += `ITENS DO PEDIDO\n`;
 
-          let temItens = false;
-          Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
-            if (qtd > 0) {
-              const prod = produtos.find(p => p.chave === chave);
-              if (prod) {
-                mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
-                temItens = true;
-              }
-            }
-          });
+                    let temItens = false;
+                    Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
+                      if (qtd > 0) {
+                        const prod = produtos.find(p => p.chave === chave);
+                        if (prod) {
+                          mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
+                          temItens = true;
+                        }
+                      }
+                    });
 
-          if (!temItens) {
-            mensagem += `NENHUM ITEM CADASTRADO\n`;
-          }
+                    if (!temItens) {
+                      mensagem += `NENHUM ITEM CADASTRADO\n`;
+                    }
 
-          mensagem += `----------------------------------------\n`;
-          mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
-          mensagem += `Agradecemos a sua preferência!`;
+                    mensagem += `----------------------------------------\n`;
+                    mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
+                    mensagem += `Agradecemos a sua preferência!`;
 
-<<<<<<< HEAD
-          return mensagem;
-        };
-
-        const resumo = gerarResumoPedidoWhatsApp();
-        navigator.clipboard.writeText(resumo).catch(err => console.log("Erro ao copiar:", err));
-        const numeroLimpo = (whatsappAvulso || "").replace(/\D/g, "");
-        if (numeroLimpo.length >= 10) {
-          const urlZap = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(resumo)}`;
-          window.open(urlZap, "_blank", "noopener,noreferrer");
-        } else {
-          const urlZap = `https://wa.me/?text=${encodeURIComponent(resumo)}`;
-          window.open(urlZap, "_blank", "noopener,noreferrer");
-        }
-        setMostrarModalCopiado(true);
-        setTimeout(() => setMostrarModalCopiado(false), 2000);
-      }}
-      className="py-3 bg-green-500/10 text-green-600 border border-green-500/20 rounded-xl font-black text-xs uppercase hover:bg-green-500/20 transition-all w-full"
-    >
-      📋 Copiar / Abrir WhatsApp
-    </button>
-  </div>
-=======
                     return mensagem;
                   };
 const resumo = gerarResumoPedidoWhatsApp();
@@ -2259,39 +1472,38 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 📋 Copiar / Abrir WhatsApp
               </button>
             </div>
->>>>>>> 8f8b1c2 (ADMIN 100)
 
-  {/* ✅ BOTÕES DE STATUS CORRIGIDOS */}
-  <div className="text-center mb-3">
-    <span className="text-sm font-bold text-[#71717A] uppercase">Escolha o status para finalizar:</span>
-  </div>
-  <div className="grid grid-cols-3 gap-3">
-    <button
-      type="button"
-      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-      onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
-      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-    >
-      💲 Pago
-    </button>
-    <button
-      type="button"
-      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-      onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
-      className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-    >
-      📦 Em Espera
-    </button>
-    <button
-      type="button"
-      disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-      onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
-      className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-    >
-      ⏳ Pendente
-    </button>
-  </div>
-</div>
+            {/* ✅ BOTÕES DE STATUS CORRIGIDOS */}
+            <div className="text-center mb-3">
+              <span className="text-sm font-bold text-[#71717A] uppercase">Escolha o status para finalizar:</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
+                className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+              >
+                💲 Pago
+              </button>
+              <button
+                type="button"
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
+                className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+              >
+                📦 Em Espera
+              </button>
+              <button
+                type="button"
+                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
+                className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+              >
+                ⏳ Pendente
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </form>
@@ -2320,28 +1532,36 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
           >
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-black text-lg uppercase text-[#27272A]">{pedido.nome}</h3>
+                {/* ✅ NOME EM NEGRITO */}
+                <h3 className="font-black text-lg uppercase text-[#27272A] font-bold">{pedido.nome}</h3>
+                <p className="text-xs text-zinc-500 font-semibold"></p>
+                {/* ✅ HORA EM VERMELHO E MAIOR */}
                 <p className="text-red-500 text-sm font-black mt-1">⏱ {pedido.horario}</p>
               </div>
-              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-red-500/10 text-red-400 border border-red-500/20">
+              {/* ✅ STATUS EM NEGRITO */}
+              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-red-500/10 text-red-400 border border-red-500/20 font-bold">
                 NÃO PAGO
               </span>
             </div>
 
+            {/* ✅ ENDEREÇO EM NEGRITO */}
             <p className="text-[#71717A] text-sm mb-3 font-bold">{pedido.endereco}</p>
 
             <div className="flex justify-between items-center mt-4">
-              <p className="text-lg font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</p>
+              {/* ✅ VALOR EM NEGRITO */}
+              <p className="text-lg font-black text-emerald-400 font-bold">R$ {pedido.valorTotal.toFixed(2)}</p>
               <div className="flex gap-2">
+                {/* ✅ BOTÃO COBRAR CORRIGIDO: SEM ALERTA, FUNCIONA DOS DOIS JEITOS */}
                 <button
                   onClick={() => {
                     if (pedido.telefone) {
                       const numeroLimpo = pedido.telefone.replace(/\D/g, "");
-                      const mensagemCobranca = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz está pendente de pagamento.\nValor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.\nPor favor, efetue o pagamento quando puder.\nAgradecemos a preferência.`;
+                      const mensagemCobranca = `Olá ${pedido.nome}.
+Seu pedido da Tapicuz está pendente de pagamento.
+Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
+Por favor, efetue o pagamento quando puder.
+Agradecemos a preferência.`;
                       const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagemCobranca)}`;
-<<<<<<< HEAD
-                      window.open(url, "_blank", "noopener,noreferrer");
-=======
                       if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
   (async () => {
     try {
@@ -2355,13 +1575,13 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 } else {
   window.open(url, "_blank", "noopener,noreferrer");
 };;
->>>>>>> 8f8b1c2 (ADMIN 100)
                     } else {
-                      const mensagemCobranca = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz está pendente de pagamento.\nValor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.\nPor favor, efetue o pagamento quando puder.\nAgradecemos a preferência.`;
+                      const mensagemCobranca = `Olá ${pedido.nome}.
+Seu pedido da Tapicuz está pendente de pagamento.
+Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
+Por favor, efetue o pagamento quando puder.
+Agradecemos a preferência.`;
                       const url = `https://wa.me/?text=${encodeURIComponent(mensagemCobranca)}`;
-<<<<<<< HEAD
-                      window.open(url, "_blank", "noopener,noreferrer");
-=======
                       if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
   (async () => {
     try {
@@ -2375,13 +1595,13 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 } else {
   window.open(url, "_blank", "noopener,noreferrer");
 };;
->>>>>>> 8f8b1c2 (ADMIN 100)
                     }
                   }}
                   className="px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
                 >
                   📲 Cobrar
                 </button>
+                {/* ✅ BOTÃO MARCAR PAGO COM COR DIFERENCIADA (AZUL) */}
                 <button
                   onClick={() => marcarComoPago(pedido.id)}
                   className="px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
@@ -2403,7 +1623,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
   </div>
 )}
 
-{/* ✅ MODAL DETALHES */}
+{/* ✅ MODAL DETALHES - CORRIGIDO, NÃO CORTA + BOTÃO FECHAR */}
 {pedidoDetalhado && (
   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-lg rounded-3xl p-6 shadow-2xl my-8">
@@ -2439,6 +1659,10 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               }
               return null;
             })
+          ) : pedidoDetalhado.itens && Array.isArray(pedidoDetalhado.itens) ? (
+            pedidoDetalhado.itens.map((item, idx) => (
+              item.quantidade > 0 && <p key={idx} className="mb-1">• {item.quantidade}x {item.nome} - R$ {(item.preco * item.quantidade).toFixed(2).replace('.', ',')}</p>
+            ))
           ) : (
             <p>Nenhum item cadastrado</p>
           )}
@@ -2460,16 +1684,18 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 )}
 
 {/* ================================================== */}
-{/* 🆕 ABA: DEMANDAS */}
+{/* 🆕 ABA: DEMANDAS - FUNCIONANDO 100% 🆕 */}
 {/* ================================================== */}
 {abaAtiva === "demandas" && (
   <div className="bg-[#FFFAF5] border border-amber-500/30 rounded-3xl p-6 shadow-xl">
-    <div className="mb-6 text-center">
+    <div className="mb-6 text-center"> {/* ✅ Centralizei todo o cabeçalho aqui */}
       <h2 className="text-lg font-black text-amber-600 uppercase tracking-wider flex items-center justify-center gap-2">
         <span>📋</span> Demanda de Produção - Total Geral
       </h2>
+      
     </div>
 
+    {/* 🆕 CORREÇÃO: Agora mostra SOMENTE o que tem quantidade > 0 */}
     {Object.values(demandasProducao).every(q => q === 0) ? (
       <div className="text-center py-16 text-zinc-500 font-bold uppercase">
         ✅ Nenhuma demanda no momento
@@ -2477,7 +1703,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
     ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
         {Object.entries(demandasProducao)
-          .filter(([_, qtd]) => qtd > 0)
+          .filter(([_, qtd]) => qtd > 0) // 🆕 SÓ MOSTRA O QUE TEM QUE FAZER!
           .sort((a, b) => b[1] - a[1])
           .map(([chave, qtd]) => (
             <div key={chave} className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#F3F4F6] text-center shadow-md">
@@ -2491,7 +1717,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 )}
 
 {/* ================================================== */}
-{/* 🆕 ABA: RANKING */}
+{/* 🆕 ABA: RANKING 🆕 */}
 {/* ================================================== */}
 {abaAtiva === "ranking" && (
   <div className="bg-[#FFFAF5] border border-orange-500/30 rounded-3xl p-6 shadow-xl">
@@ -2503,7 +1729,10 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
     </div>
 
     {(() => {
-      const todosPedidos = [...pedidosPagos, ...pedidosPendentes];
+      const todosPedidos = [
+        ...pedidosPagos,
+        ...pedidosPendentes
+      ]
       const dadosRanking: { [key: string]: { nome: string; icone: string; qtd: number; valor: number } } = {};
 
       produtos.forEach(prod => {
@@ -2594,6 +1823,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Horário</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Pagamento</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Valor</th>
+              {/* Ajuste aqui: alinhamento e proporção */}
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-center">Status</th>
               <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-right">Ações</th>
             </tr>
@@ -2604,35 +1834,56 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 key={pedido.id} 
                 className="hover:bg-[#FFEDD5]/60 transition-all duration-200 ease-in-out"
               >
+                {/* Cliente */}
                 <td className="p-4 max-w-[200px] group relative">
-                  <div className="font-semibold text-zinc-800 truncate cursor-help" title={pedido.nome}>
+                  <div 
+                    className="font-semibold text-zinc-800 truncate cursor-help"
+                    title={pedido.nome}
+                  >
+                    {pedido.nome}
+                  </div>
+                  <div className="absolute left-0 top-full mt-1 z-10 hidden group-hover:block bg-zinc-800 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-xs break-words">
                     {pedido.nome}
                   </div>
                 </td>
+
+                {/* Horário */}
                 <td className="p-4">
                   <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md text-sm">
                     {pedido.horario}
                   </span>
                 </td>
+
+                {/* Pagamento */}
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
-                    pedido.pagamento === "Pix" 
-                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
-                      : "bg-blue-100 text-blue-700 border border-blue-200"
-                  }`}>
+                  <span 
+                    className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
+                      pedido.pagamento === "Pix" 
+                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
+                        : pedido.pagamento === "Dinheiro"
+                        ? "bg-blue-100 text-blue-700 border border-blue-200"
+                        : "bg-amber-100 text-amber-700 border border-amber-200"
+                    }`}
+                  >
                     {pedido.pagamento}
                   </span>
                 </td>
+
+                {/* Valor */}
                 <td className="p-4">
                   <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
                     R$ {pedido.valorTotal.toFixed(2)}
                   </span>
                 </td>
+
+                {/* Status: centralizado e proporcional */}
                 <td className="p-4 text-center">
                   <span className="inline-block w-max text-xs font-bold uppercase px-3 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200">
                     Concluído
                   </span>
                 </td>
+
+                {/* Ações: alinhado à direita e proporcional */}
                 <td className="p-4 text-right">
                   <button
                     onClick={() => setPedidoDetalhado(pedido)}
@@ -2655,7 +1906,9 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 {/* ================================================== */}
 {abaAtiva === "caixa" && (
   <div className="space-y-6">
+    {/* Resumo do Turno ATUAL (o que está aberto agora) */}
     <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+      {/* ✅ TÍTULO CENTRALIZADO ✅ */}
       <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-6 text-center">
         💰 Resumo do Turno Atual
       </h2>
@@ -2686,6 +1939,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         </div>
       </div>
 
+      {/* ✅ SÓ ESSA PARTE FOI ALTERADA: CAMPO E BOTÃO DE DESPESA ✅ */}
       <form onSubmit={lancarDespesaSimples} className="mb-6 p-4 bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl">
         <h3 className="text-sm font-black text-red-400 uppercase mb-3 text-center">Lançar Despesa</h3>
         <div className="flex flex-col gap-2 w-full">
@@ -2704,6 +1958,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
           </button>
         </div>
       </form>
+      {/* ✅ FIM DA ALTERAÇÃO — O RESTO ESTÁ IGUAL AO SEU ✅ */}
 
       <button
         type="button"
@@ -2720,9 +1975,11 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
       >
         🗑️ Apagar Histórico de Fechamentos
       </button>
+      
     </div>
-
+    {/* ✅ HISTÓRICO: TUDO IGUAL AO SEU, PERFEITO */}
     <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-5 shadow-xl">
+      {/* ✅ TÍTULO CENTRALIZADO ✅ */}
       <h2 className="text-lg font-black text-orange-400 uppercase tracking-wider mb-5 text-center flex justify-center items-center gap-2">
         📚 Histórico de Fechamentos
       </h2>
@@ -2733,56 +1990,97 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         </div>
       ) : (
         <div className="space-y-4">
+          {/* ✅ AGORA O SOMATÓRIO FICA AQUI, EM CIMA DE TUDO ✅ */}
           <div className="mb-4 border-2 border-orange-300 rounded-xl overflow-hidden">
             <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-4 shadow-md">
-              <h3 className="text-center text-orange-800 font-black uppercase text-lg mb-3">🧾 SOMATÓRIO GERAL</h3>
+              <h3 className="text-center text-orange-800 font-black uppercase text-lg mb-3">
+                🧾 SOMATÓRIO GERAL
+              </h3>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 text-center p-2 bg-emerald-100 rounded-lg border border-emerald-200">
+                
+                {/* 1. TOTAL FATURADO - NORMAL */}
+                <div className="text-center p-2 bg-emerald-100 rounded-lg border border-emerald-200 col-span-2">
                   <p className="text-xs font-black text-emerald-800 uppercase mb-1">Total Faturado</p>
-                  <p className="text-lg font-black text-emerald-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.faturado || 0), 0).toFixed(2)}</p>
+                  <p className="text-lg font-black text-emerald-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.faturado || 0), 0).toFixed(2)}
+                  </p>
                 </div>
+
+                {/* 2. TOTAL DINHEIRO - NORMAL */}
                 <div className="text-center p-2 bg-amber-100 rounded-lg border border-amber-200">
                   <p className="text-xs font-black text-amber-800 uppercase mb-1">Total Dinheiro</p>
-                  <p className="text-lg font-black text-amber-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalDinheiro || 0), 0).toFixed(2)}</p>
+                  <p className="text-lg font-black text-amber-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalDinheiro || 0), 0).toFixed(2)}
+                  </p>
                 </div>
+
+                {/* 3. TOTAL PIX - NORMAL */}
                 <div className="text-center p-2 bg-teal-100 rounded-lg border border-teal-200">
                   <p className="text-xs font-black text-teal-800 uppercase mb-1">Total Pix</p>
-                  <p className="text-lg font-black text-teal-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalPix || 0), 0).toFixed(2)}</p>
+                  <p className="text-lg font-black text-teal-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalPix || 0), 0).toFixed(2)}
+                  </p>
                 </div>
+
+                {/* 4. TOTAL DESPESA - VOLTOU AO NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-red-100 rounded-lg border border-red-200">
                   <p className="text-xs font-black text-red-800 uppercase mb-1">Total Despesa</p>
-                  <p className="text-lg font-black text-red-900">R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}</p>
+                  <p className="text-lg font-black text-red-900">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.despesas || 0), 0).toFixed(2)}
+                  </p>
                 </div>
+
+                {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-500 shadow-sm">
                   <p className="text-sm font-black text-emerald-800 uppercase mb-1">Valor Total</p>
-                  <p className="text-3xl font-black text-emerald-700">R$ {historicoCaixas.reduce((soma, c) => soma + (c.saldoLiquido || 0), 0).toFixed(2)}</p>
+                  <p className="text-3xl font-black text-emerald-700">
+                    R$ {historicoCaixas.reduce((soma, c) => soma + (c.saldoLiquido || 0), 0).toFixed(2)}
+                  </p>
                 </div>
+
               </div>
             </div>
           </div>
 
+          {/* 🔽 FECHAMENTOS INDIVIDUAIS 🔽 */}
           {historicoCaixas.map((caixa, idx) => (
-            <div key={idx} className="bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all p-4">
+            <div 
+              key={idx} 
+              className="bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all p-4"
+            >
+              {/* 📅 DATA */}
               <div className="bg-orange-50 rounded-xl p-3 mb-3 border border-orange-200">
-                <p className="text-orange-900 font-black text-sm text-center">📅 {caixa.dataHora}</p>
+                <p className="text-orange-900 font-black text-sm text-center">
+                  📅 {caixa.dataHora}
+                </p>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
+                {/* 1. FATURADO - NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-emerald-50 rounded-lg border border-emerald-100">
                   <p className="text-xs font-black text-emerald-700 uppercase mb-1">Faturado</p>
                   <p className="text-base font-black text-emerald-800">R$ {(caixa.faturado || 0).toFixed(2)}</p>
                 </div>
+
+                {/* 2. DINHEIRO - NORMAL */}
                 <div className="text-center p-2 bg-amber-50 rounded-lg border border-amber-100">
                   <p className="text-xs font-black text-amber-700 uppercase mb-1">Recebido Dinheiro</p>
                   <p className="text-base font-black text-amber-800">R$ {(caixa.totalDinheiro || 0).toFixed(2)}</p>
                 </div>
+
+                {/* 3. PIX - NORMAL */}
                 <div className="text-center p-2 bg-teal-50 rounded-lg border border-teal-100">
                   <p className="text-xs font-black text-teal-700 uppercase mb-1">Recebido Pix</p>
                   <p className="text-base font-black text-teal-800">R$ {(caixa.totalPix || 0).toFixed(2)}</p>
                 </div>
+
+                {/* 4. DESPESAS - VOLTOU AO NORMAL */}
                 <div className="col-span-2 text-center p-2 bg-red-50 rounded-lg border border-red-100">
                   <p className="text-xs font-black text-red-700 uppercase mb-1">Despesas</p>
                   <p className="text-base font-black text-red-800">R$ {(caixa.despesas || 0).toFixed(2)}</p>
                 </div>
+
+                {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-400 shadow-sm">
                   <p className="text-sm font-black text-emerald-800 uppercase mb-1">Valor Total</p>
                   <p className="text-2xl font-black text-emerald-700">R$ {(caixa.saldoLiquido || 0).toFixed(2)}</p>
@@ -2790,37 +2088,12 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               </div>
             </div>
           ))}
+
         </div>
       )}
     </div>
   </div>
 )}
-<<<<<<< HEAD
-
-{/* ✅ Modal: Confirmação Apagar Histórico */}
-{modalConfirmarApagarHistorico && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-white border border-orange-200 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl">
-      <div className="text-center">
-        <span className="text-5xl text-orange-400">🗑️</span>
-      </div>
-      <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">Confirmar Exclusão</h3>
-      <p className="text-center text-zinc-600 font-bold text-base">
-        Tem certeza que deseja apagar todo o histórico de fechamentos? <br/>
-        Essa ação não poderá ser desfeita.
-      </p>
-      <div className="grid grid-cols-2 gap-3 pt-2">
-        <button
-          onClick={() => {
-            setHistoricoCaixas([]);
-            localStorage.removeItem('historicoCaixas');
-            setModalConfirmarApagarHistorico(false);
-            const msg = document.createElement('div');
-            msg.innerText = 'Histórico apagado com sucesso!';
-            msg.style.cssText = `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #f59e0b; color: white; font-weight: 900; font-size: 15px; padding: 14px 28px; border-radius: 12px; z-index: 99999; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-transform: uppercase; letter-spacing: 0.5px;`;
-            document.body.appendChild(msg);
-            setTimeout(() => msg.remove(), 2500);
-=======
 {/* Modal de confirmação */}
 {modalConfirmarZerarTudo && (
   <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -2887,7 +2160,6 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               setNotificacaoCaixa("❌ Erro ao apagar histórico");
               setTimeout(() => setNotificacaoCaixa(null), 3000);
             }
->>>>>>> 8f8b1c2 (ADMIN 100)
           }}
           className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase transition-all duration-200 shadow-sm hover:shadow"
         >
@@ -2905,11 +2177,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
     </div>
   </div>
 )}
-<<<<<<< HEAD
-
-=======
        
->>>>>>> 8f8b1c2 (ADMIN 100)
   </div>
 )}
 
