@@ -6,8 +6,7 @@ import { collection, doc, onSnapshot, addDoc, query } from "firebase/firestore"
 import Image from "next/image"
 import { gerarPixCopiaECola } from "@/lib/pix"
 
-// Tipagem das etapas do app
-type Etapa = "menu" | "observacao" | "checkout" | "confirmacao" | "sucesso"
+type Etapa = "menu" | "dados" | "observacao" | "horario" | "pagamento" | "confirmacao" | "aviso" | "sucesso"
 
 const VERSICULOS_BENCÃO = [
   "Posso todas as coisas naquele que me fortalece. (Filipenses 4:13)",
@@ -26,7 +25,7 @@ const VERSICULOS_BENCÃO = [
   "Peçam, e lhes será dado; busquem, e encontrarão; batam, e a porta lhes será aberta. (Mateus 7:7)",
   "Não se preocupem com nada; em tudo, porém, apresentem os seus pedidos a Deus, com oração e súplica, e com ação de graças. (Filipenses 4:6)",
   "E a paz de Deus, que excede todo o entendimento, guardará o seu coração e a sua mente em Cristo Jesus. (Filipenses 4:7)",
-  "Porque vocês não receberam um espírito de escravidão, para voltarem a ter medo; mas receberam o Espírito de adoção, por meio do qual clamamos: ‘Aba, Pai!’ (Romanos 8:15)",
+  "Porque vocês não receberam um espírito de escravidão, para voltarem a ter medo; mas receberam o Espírito de adoção, por meio do qual clamamos: 'Aba, Pai!' (Romanos 8:15)",
   "E sabemos que em todas as coisas Deus age para o bem daqueles que o amam, dos que foram chamados segundo o seu propósito. (Romanos 8:28)",
   "Se vocês permanecerem em mim, e as minhas palavras permanecerem em vocês, pedirão o que quiserem, e lhes será concedido. (João 15:7)",
   "Eu lhes disse essas coisas para que em mim vocês tenham paz. Neste mundo vocês terão aflições; mas tenham coragem! Eu venci o mundo. (João 16:33)",
@@ -36,7 +35,7 @@ const VERSICULOS_BENCÃO = [
   "Minha graça basta a você, pois a minha força se aperfeiçoa na fraqueza. (2 Coríntios 12:9)",
   "O Senhor está perto dos que têm o coração quebrantado e salva os que têm o espírito arrependido. (Salmo 34:18)",
   "Entregue a sua preocupação ao Senhor, pois ele se importa com você. (1 Pedro 5:7)",
-  "Quem habita no abrigo do Altíssimo descansa à sombra do Todo-poderoso. Diz ao Senhor: ‘Tu és o meu refúgio e a minha fortaleza, o meu Deus, em quem confio’. (Salmo 91:1-2)",
+  "Quem habita no abrigo do Altíssimo descansa à sombra do Todo-poderoso. Diz ao Senhor: 'Tu és o meu refúgio e a minha fortaleza, o meu Deus, em quem confio'. (Salmo 91:1-2)",
   "Eis que estou à porta e bato. Se alguém ouvir a minha voz e abrir a porta, entrarei e cearei com ele, e ele comigo. (Apocalipse 3:20)",
   "Mas vocês receberão poder, quando o Espírito Santo descer sobre vocês; e serão minhas testemunhas em Jerusalém, em toda a Judéia e Samaria, e até os confins da terra. (Atos 1:8)",
   "O amor é paciente, o amor é bondoso. Não inveja, não se vangloria, não se orgulha. Não maltrata, não procura seus interesses, não se ira facilmente, não guarda rancor. (1 Coríntios 13:4-5)",
@@ -56,8 +55,8 @@ const PRECOS_PRODUTOS: { [key: string]: number } = {
   tapiocaMolhada: 8.00,
   tapiocaManteiga: 6.00,
   tapiocaQueijo: 8.00,
-  tapiocaOvo: 8.00,          
-  tapiocaQueijoOvo: 10.00,    
+  tapiocaOvo: 8.00,
+  tapiocaQueijoOvo: 10.00,
   cuscuzMilho: 5.00,
   cuscuzArroz: 6.00,
   cuscuzMilhoArroz: 6.00,
@@ -68,7 +67,7 @@ const DETALHES_PRODUTOS: { [key: string]: { nome: string; icone: string; imagem:
   tapiocaMolhada: { nome: "Tapioca Molhada", icone: "🥥", imagem: "tapioca_molhada.png" },
   tapiocaManteiga: { nome: "Tapioca com Manteiga", icone: "🧈", imagem: "tapioca_manteiga.png" },
   tapiocaQueijo: { nome: "Tapioca com Queijo", icone: "🧀", imagem: "tapioca_queijo.png" },
-  tapiocaOvo: { nome: "Tapioca com Ovo", icone: "🥚", imagem: "tapioca_ovo.png" },                  
+  tapiocaOvo: { nome: "Tapioca com Ovo", icone: "🥚", imagem: "tapioca_ovo.png" },
   tapiocaQueijoOvo: { nome: "Tapioca com Queijo e Ovo", icone: "🧀🥚", imagem: "tapioca_queijo_ovo.png" },
   cuscuzMilho: { nome: "Cuscuz de Milho", icone: "🌽", imagem: "cuscuz_milho.png" },
   cuscuzArroz: { nome: "Cuscuz de Arroz", icone: "🍚", imagem: "cuscuz_arroz.png" },
@@ -77,64 +76,68 @@ const DETALHES_PRODUTOS: { [key: string]: { nome: string; icone: string; imagem:
 }
 
 export default function ClientePainel() {
-  const [lojaAberta, setLojaAberta] = useState<boolean>(true)
+  const [lojaAberta, setLojaAberta] = useState(true)
   const [dadosFuncionamento, setDadosFuncionamento] = useState<any>(null)
   const [carregandoLoja, setCarregandoLoja] = useState(true)
   const [enviandoPedido, setEnviandoPedido] = useState(false)
   const [etapa, setEtapa] = useState<Etapa>("menu")
-  const [produtosBanco, setProdutosBanco] = useState<{ 
-    [key: string]: { 
-      disponivel: boolean; 
-      preco: number; 
-      nome: string;
-      icone: string;
-    } 
-  }>({})
+  const [produtosBanco, setProdutosBanco] = useState<{ [key: string]: { disponivel: boolean; preco: number; nome: string; icone: string } }>({})
+
   const [nome, setNome] = useState("")
   const [endereco, setEndereco] = useState("")
   const [numeroCasa, setNumeroCasa] = useState("")
   const [referencia, setReferencia] = useState("")
-  const [observacao, setObservacao] = useState("") 
+  const [observacao, setObservacao] = useState("")
+  const [observacoesItem, setObservacoesItem] = useState<{ [key: string]: string[] }>({})
+  const [telefone, setTelefone] = useState("")
   const [pagamento, setPagamento] = useState<"Pix" | "Dinheiro">("Pix")
   const [trocoPara, setTrocoPara] = useState("")
   const [horario, setHorario] = useState("")
-  const [mostrarListaHorarios, setMostrarListaHorarios] = useState(false)
-  const [telefone, setTelefone] = useState("")
-  const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
-
   const [diaEscolhido, setDiaEscolhido] = useState<any>(null)
-  const DIAS_FUNCIONAMENTO = [
-    {valor:"segunda", nome:"Segunda"}, {valor:"terca", nome:"Terça"}, {valor:"quarta", nome:"Quarta"},
-    {valor:"quinta", nome:"Quinta"}, {valor:"sexta", nome:"Sexta"}, {valor:"sabado", nome:"Sábado"}, {valor:"domingo", nome:"Domingo"}
-  ]
-
-  const [statusPix, setStatusPix] = useState<"normal" | "carregando" | "copiado" | "erro">("normal")
-  const [mostrarAlertaPix, setMostrarAlertaPix] = useState(false)
-  const [codigoPix, setCodigoPix] = useState("")
+  const [mostrarListaHorarios, setMostrarListaHorarios] = useState(false)
+  const [mostrarAvisoDados, setMostrarAvisoDados] = useState(false)
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   const [lojaManualAberta, setLojaManualAberta] = useState(true)
-  const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
+
+  const [statusPix, setStatusPix] = useState<"normal" | "carregando" | "copiado" | "erro">("normal")
+  const [codigoPix, setCodigoPix] = useState("")
+  const [pixCopiado, setPixCopiado] = useState(false)
   const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false)
+  const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
+
+  const DIAS_FUNCIONAMENTO = [
+    { valor: "segunda", nome: "Segunda" }, { valor: "terca", nome: "Terça" },
+    { valor: "quarta", nome: "Quarta" }, { valor: "quinta", nome: "Quinta" },
+    { valor: "sexta", nome: "Sexta" }, { valor: "sabado", nome: "Sábado" },
+    { valor: "domingo", nome: "Domingo" }
+  ]
 
   const [itens, setItens] = useState<{ [key: string]: number }>({
-    tapiocaMolhada: 0, tapiocaManteiga: 0, tapiocaQueijo: 0, tapiocaOvo: 0,          
+    tapiocaMolhada: 0, tapiocaManteiga: 0, tapiocaQueijo: 0, tapiocaOvo: 0,
     tapiocaQueijoOvo: 0, cuscuzMilho: 0, cuscuzArroz: 0, cuscuzMilhoArroz: 0, cafe: 0,
   })
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const nomeSalvo = localStorage.getItem("tapicuz_nome")
+      const enderecoSalvo = localStorage.getItem("tapicuz_endereco")
+      const telefoneSalvo = localStorage.getItem("tapicuz_telefone")
+      setNome(nomeSalvo || "")
+      setEndereco(enderecoSalvo || "")
+      setNumeroCasa(localStorage.getItem("tapicuz_numero") || "")
+      setReferencia(localStorage.getItem("tapicuz_referencia") || "")
+      setTelefone(telefoneSalvo || "")
+      if (!nomeSalvo || !enderecoSalvo || !telefoneSalvo) {
+        setMostrarAvisoDados(true)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (dadosFuncionamento) verificarSeEstaAberto(dadosFuncionamento)
   }, [lojaManualAberta, dadosFuncionamento])
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setNome(localStorage.getItem("tapicuz_nome") || "")
-      setEndereco(localStorage.getItem("tapicuz_endereco") || "")
-      setNumeroCasa(localStorage.getItem("tapicuz_numero") || "")
-      setReferencia(localStorage.getItem("tapicuz_referencia") || "")
-      setTelefone(localStorage.getItem("tapicuz_telefone") || "")
-    }
-
-    // 🔧 CORREÇÃO: Usando um único caminho para evitar conflito
     const refFuncionamento = doc(db, "configuracoes", "funcionamento")
 
     const unsubscribeStatus = onSnapshot(refFuncionamento, (snap) => {
@@ -146,7 +149,7 @@ export default function ClientePainel() {
         else if (dadosFuncionamento) verificarSeEstaAberto(dadosFuncionamento)
       }
     })
-    
+
     const unsubscribeFuncionamento = onSnapshot(refFuncionamento, (snap) => {
       if (snap.exists()) {
         const dados = snap.data()
@@ -156,8 +159,7 @@ export default function ClientePainel() {
         setLojaAberta(false)
       }
       setCarregandoLoja(false)
-    }, (error) => {
-      console.error("Erro ao carregar funcionamento:", error)
+    }, () => {
       setLojaAberta(false)
       setCarregandoLoja(false)
     })
@@ -184,7 +186,6 @@ export default function ClientePainel() {
     }
   }, [])
 
-  // ✅ Validação do WhatsApp
   function validarTelefone(telefone: string): boolean {
     const apenasNumeros = telefone.replace(/\D/g, "")
     return apenasNumeros.startsWith("919") && apenasNumeros.length === 11
@@ -203,42 +204,87 @@ export default function ClientePainel() {
   function horariosPermitidosParaDia() {
     if (!dadosFuncionamento || !diaEscolhido) return []
     const horarios = dadosFuncionamento.horariosPorDia?.[diaEscolhido.valor]
-    return horarios ? horarios.sort() : []
+    return horarios ? [...horarios].sort() : []
   }
 
   function alterarQtd(chave: string, valor: number) {
-    setItens(prev => ({ ...prev, [chave]: Math.max(0, prev[chave] + valor) }))
+    const novaQtd = Math.max(0, itens[chave] + valor)
+    setItens(prev => ({ ...prev, [chave]: novaQtd }))
+    setObservacoesItem(prev => {
+      const current = prev[chave] || []
+      if (novaQtd > current.length) {
+        return { ...prev, [chave]: [...current, ...Array(novaQtd - current.length).fill("")] }
+      }
+      if (novaQtd < current.length) {
+        return { ...prev, [chave]: current.slice(0, novaQtd) }
+      }
+      return prev
+    })
   }
 
   const totalItensSelecionados = Object.values(itens).reduce((a, b) => a + b, 0)
-  
-  // Cálculos
-  let subtotal = 0, qtdComidas = 0, qtdCafes = itens.cafe
-  Object.entries(itens).forEach(([key, qtd]) => {
-    const preco = produtosBanco[key]?.preco ?? PRECOS_PRODUTOS[key]
+
+  let subtotal = 0
+  let qtdComidas = 0
+  const qtdCafes = itens.cafe
+
+  Object.entries(itens).forEach(([chave, qtd]) => {
+    const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
     subtotal += preco * qtd
-    if (key !== "cafe") qtdComidas += qtd
+    if (chave !== "cafe") qtdComidas += qtd
   })
 
-  const descuentoCombo = qtdComidas > 0 && qtdCafes > 0 ? Math.min(qtdComidas, qtdCafes) * 2.00 : 0
+  let descuentoCombo = 0
+  if (qtdComidas > 0 && qtdCafes > 0) {
+    const totalCombos = Math.min(qtdComidas, qtdCafes)
+    let cafesUsados = 0
+    for (const [chave, qtd] of Object.entries(itens)) {
+      if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
+        const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+        const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
+        const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
+        descuentoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
+        cafesUsados += qtdUsar
+      }
+    }
+  }
+
   const valorTotalFinal = Math.max(0, subtotal - descuentoCombo)
   const trocoParaNum = parseFloat(trocoPara.replace(",", ".")) || 0
   const trocoCalculado = pagamento === "Dinheiro" && trocoParaNum > valorTotalFinal ? trocoParaNum - valorTotalFinal : 0
 
-  function irParaConferencia(e: React.FormEvent) {
-    e.preventDefault()
+  function irParaDados() {
     setErroValidacao(null)
-    if (!lojaAberta) return
-    if (valorTotalFinal === 0) { setErroValidacao("Adicione pelo menos um item"); setEtapa("menu"); return }
-    if (!nome.trim()) { setErroValidacao("Informe seu nome"); return }
-    if (!telefone.trim() || !validarTelefone(telefone)) { 
-      setErroValidacao("WhatsApp deve começar com 919 e ter 11 dígitos"); 
-      document.getElementById("campo-telefone")?.scrollIntoView({ behavior: "smooth" }); return 
+    if (valorTotalFinal === 0) {
+      setErroValidacao("Adicione pelo menos um item")
+      return
     }
+    setEtapa("dados")
+  }
+
+  function irParaObservacao() {
+    setErroValidacao(null)
+    if (!nome.trim()) { setErroValidacao("Informe seu nome"); return }
     if (!endereco.trim()) { setErroValidacao("Informe o endereço"); return }
     if (!numeroCasa.trim() || !/^\d+$/.test(numeroCasa)) { setErroValidacao("Número da casa inválido"); return }
+    if (!telefone.trim() || !validarTelefone(telefone)) { setErroValidacao("WhatsApp deve começar com 919 e ter 11 dígitos"); return }
+    setEtapa("observacao")
+  }
+
+  function irParaHorario() {
+    setErroValidacao(null)
+    setEtapa("horario")
+  }
+
+  function irParaPagamento() {
+    setErroValidacao(null)
     if (!diaEscolhido) { setErroValidacao("Escolha o dia da entrega"); return }
-    if (!horario) { setErroValidacao("Escolha o horário"); setMostrarListaHorarios(true); return }
+    if (!horario) { setErroValidacao("Escolha o horário"); return }
+    setEtapa("pagamento")
+  }
+
+  function irParaConfirmacao() {
+    setErroValidacao(null)
     setEtapa("confirmacao")
   }
 
@@ -249,7 +295,9 @@ export default function ClientePainel() {
         return true
       }
       return false
-    } catch (err) { console.error("Erro ao copiar:", err); return false }
+    } catch {
+      return false
+    }
   }
 
   async function processarEnvioPedido() {
@@ -257,6 +305,7 @@ export default function ClientePainel() {
     setEnviandoPedido(true)
     setStatusPix("normal")
     setCodigoPix("")
+    setPixCopiado(false)
 
     if (pagamento === "Pix") {
       try {
@@ -265,12 +314,10 @@ export default function ClientePainel() {
         if (!dadosPix?.payload) throw new Error("PIX inválido")
         setCodigoPix(dadosPix.payload)
         setStatusPix("copiado")
-        setMostrarAlertaPix(true)
-      } catch (err) {
-        console.error(err)
+        setEnviandoPedido(false)
+      } catch {
         setStatusPix("erro")
         alert("Não foi possível gerar o PIX")
-      } finally {
         setEnviandoPedido(false)
       }
     } else {
@@ -289,65 +336,105 @@ export default function ClientePainel() {
         localStorage.setItem("tapicuz_telefone", telefone.trim())
       }
 
-      const enderecoCompleto = `${endereco.trim()}, Nº ${numeroCasa.trim()} ${referencia.trim() ? `- Ref: ${referencia.trim()}` : ""}`
+      const enderecoCompleto = `${endereco.trim()}, Nº ${numeroCasa.trim()}${referencia.trim() ? ` - Ref: ${referencia.trim()}` : ""}`
       const payloadPedido = {
-        nome: nome.trim(), telefone: telefone.trim(), endereco: enderecoCompleto, observacao: observacao.trim(),
-        pagamento, troco: trocoCalculado, valorTotal: valorTotalFinal, valorOriginal: subtotal, descontoCombo: descuentoCombo,
-        horario, dia: diaEscolhido?.nome || "", pago: false, concluido: false, dataCriacao: new Date().toISOString(), itens
+        nome: nome.trim(),
+        telefone: telefone.trim(),
+        endereco: enderecoCompleto,
+        observacao: observacao.trim(),
+        observacoesItem,
+        pagamento,
+        troco: trocoCalculado,
+        valorTotal: valorTotalFinal,
+        horario,
+        dia: diaEscolhido?.nome || "",
+        pago: pagamento === "Pix",
+        concluido: false,
+        dataCriacao: new Date().toISOString(),
+        itens
       }
 
       await addDoc(collection(db, "pedidos"), payloadPedido)
       setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
-      setEtapa("sucesso")
-    } catch (err) {
-      console.error("Erro ao salvar:", err)
+      setCodigoPix("")
+      setStatusPix("normal")
+      setPixCopiado(false)
+      setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+    } catch {
       alert("Erro ao enviar pedido. Tente novamente.")
     } finally {
       setEnviandoPedido(false)
-      setMostrarAlertaPix(false)
     }
   }
 
   function reiniciarPainel() {
-    setItens({ tapiocaMolhada:0, tapiocaManteiga:0, tapiocaQueijo:0, tapiocaOvo:0, tapiocaQueijoOvo:0, cuscuzMilho:0, cuscuzArroz:0, cuscuzMilhoArroz:0, cafe:0 })
-    setObservacao(""); setTrocoPara(""); setHorario(""); setDiaEscolhido(null); setErroValidacao(null)
-    setVersiculoEscolhido(""); setStatusPix("normal"); setCodigoPix(""); setEtapa("menu")
+    setItens({ tapiocaMolhada: 0, tapiocaManteiga: 0, tapiocaQueijo: 0, tapiocaOvo: 0, tapiocaQueijoOvo: 0, cuscuzMilho: 0, cuscuzArroz: 0, cuscuzMilhoArroz: 0, cafe: 0 })
+    setObservacao(""); setObservacoesItem({}); setTrocoPara(""); setHorario(""); setDiaEscolhido(null); setErroValidacao(null)
+    setVersiculoEscolhido(""); setStatusPix("normal"); setCodigoPix(""); setPixCopiado(false)
+    setEtapa("menu")
   }
 
-  if (carregandoLoja) return <div className="min-h-screen bg-[#FFFAF5] flex items-center justify-center text-zinc-500 text-xs tracking-widest font-bold animate-pulse">CARREGANDO...</div>
+  if (carregandoLoja) {
+    return <div className="min-h-screen bg-[#FFFAF5] flex items-center justify-center text-zinc-500 text-xs tracking-widest font-bold animate-pulse">CARREGANDO...</div>
+  }
 
-  if (!lojaAberta) return (
-    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
-      <div className="text-center mb-8 select-none">
-        <h1 className="text-5xl font-extrabold tracking-[0.2em] text-white uppercase drop-shadow-lg">TAPICUZ</h1>
-        <p className="text-lg font-bold text-amber-100 tracking-[0.4em] uppercase mt-2">DA SUL</p>
+  if (!lojaAberta) {
+    return (
+      <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
+        <div className="text-center mb-8 select-none">
+          <h1 className="text-5xl font-extrabold tracking-[0.2em] text-white uppercase drop-shadow-lg">TAPICUZ</h1>
+          <p className="text-lg font-bold text-amber-100 tracking-[0.4em] uppercase mt-2">DA SUL</p>
+        </div>
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl space-y-5">
+          <div className="text-5xl animate-pulse">🌙</div>
+          <h2 className="text-xl font-black uppercase text-orange-500">
+            {dadosFuncionamento ? "ESTAMOS FECHADOS" : "NÃO ACEITAMOS PEDIDOS AGORA"}
+          </h2>
+          <p className="text-lg text-[#52525B]">Agradecemos sua visita! 🧡 Voltaremos em breve.</p>
+        </div>
       </div>
-      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl space-y-5">
-        <div className="text-5xl animate-pulse">🌙</div>
-        <h2 className="text-xl font-black uppercase text-orange-500">
-          {dadosFuncionamento ? "ESTAMOS FECHADOS" : "NÃO ACEITAMOS PEDIDOS AGORA"}
-        </h2>
-        <p className="text-lg text-[#52525B]">Agradecemos sua visita! 🧡 Voltaremos em breve.</p>
-      </div>
-    </div>
-  )
+    )
+  }
 
-  if (etapa === "sucesso") return (
-    <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
-      <div className="max-w-md w-full bg-white border-4 border-orange-500 rounded-3xl p-6 shadow-2xl space-y-5">
-        <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto animate-bounce">✓</div>
-        <h2 className="text-xl font-black text-emerald-400 uppercase">PEDIDO ENVIADO!</h2>
-        {versiculoEscolhido && (
-  <div className="border-2 border-amber-500/30 p-5 bg-[#FFFAF5] rounded-2xl">
-    <span className="text-sm font-bold text-amber-800 uppercase">📖 PALAVRA DO DIA</span>
-    <p className="text-lg font-black text-black mt-3 leading-relaxed">"{versiculoEscolhido}"</p>
-  </div>
-)}
-
-        <button onClick={reiniciarPainel} className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-black font-black rounded-xl">AMÉM 🙏</button>
+  if (etapa === "aviso") {
+    return (
+      <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
+        <div className="max-w-md w-full bg-white border-4 border-amber-400 rounded-3xl p-6 shadow-2xl space-y-5">
+          <div className="w-14 h-14 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center text-2xl mx-auto">⚠️</div>
+          <h2 className="text-xl font-black text-amber-600 uppercase">LEMBRETE IMPORTANTE</h2>
+          <div className="bg-amber-50 border-2 border-amber-400 p-5 rounded-xl">
+            <p className="text-amber-800 font-bold text-lg leading-relaxed">
+              Não esqueça de enviar o comprovante de pagamento pelo WhatsApp!
+            </p>
+          </div>
+          <button onClick={() => setEtapa("sucesso")}
+            className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black font-black rounded-xl text-lg">
+            OK, ENVIAREI ✅
+          </button>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (etapa === "sucesso") {
+    return (
+      <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
+        <div className="max-w-md w-full bg-white border-4 border-orange-500 rounded-3xl p-6 shadow-2xl space-y-5">
+          <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto animate-bounce">✓</div>
+          <h2 className="text-xl font-black text-emerald-400 uppercase">PEDIDO ENVIADO!</h2>
+
+          {versiculoEscolhido && (
+            <div className="border-2 border-amber-500/30 p-5 bg-[#FFFAF5] rounded-2xl">
+              <span className="text-sm font-bold text-amber-800 uppercase">📖 PALAVRA DO DIA</span>
+              <p className="text-lg font-black text-black mt-3 leading-relaxed">&ldquo;{versiculoEscolhido}&rdquo;</p>
+            </div>
+          )}
+
+          <button onClick={reiniciarPainel} className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-black font-black rounded-xl">AMÉM 🙏</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-[#FFFAF5] text-[#27272A] pb-28 font-sans antialiased">
@@ -362,24 +449,6 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {mostrarAlertaPix && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-white border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 space-y-5">
-            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl flex items-center justify-center mx-auto">📲</div>
-            <h3 className="text-xl font-black text-emerald-400 uppercase">PIX GERADO!</h3>
-            <p className="text-center">Olá <strong className="text-orange-500">{nome || "CLIENTE"}</strong></p>
-            <div className="bg-[#FFFAF5] p-3 rounded-xl break-all text-xs">{codigoPix}</div>
-            <button onClick={async () => {
-              const ok = await executarCopiaTexto(codigoPix)
-              ok ? (setMostrarMensagemCopiado(true), setTimeout(() => setMostrarMensagemCopiado(false), 2500)) : alert("Erro ao copiar")
-            }} className="w-full py-3 bg-orange-500 text-black font-black rounded-xl">📋 COPIAR PIX</button>
-            <button onClick={salvarPedidoNoBanco} disabled={enviandoPedido} className="w-full py-3 bg-emerald-500 text-black font-black rounded-xl">
-              {enviandoPedido ? "GRAVANDO..." : "FINALIZAR ✅"}
-            </button>
-          </div>
-        </div>
-      )}
-
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-[#F3F4F6] px-4 py-4 shadow-md">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-xl font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
@@ -387,18 +456,19 @@ export default function ClientePainel() {
         </div>
       </header>
 
-      {(etapa === "menu" || etapa === "observacao" || etapa === "checkout") && (
+      {(etapa === "menu" || etapa === "dados" || etapa === "horario" || etapa === "pagamento") && (
         <div className="max-w-2xl mx-auto px-0 sm:px-4">
           <Image src="/banner/banner-topo-v2.png" alt="Café da Manhã" width={800} height={220} priority className="w-full h-auto object-cover rounded-b-3xl shadow-lg" />
         </div>
       )}
 
+      {/* === ETAPA 1: CARDÁPIO === */}
       {etapa === "menu" && (
         <div className="max-w-2xl mx-auto px-4 mt-6 space-y-6">
           <div className="bg-orange-100 border-2 border-orange-500 rounded-2xl p-4 text-center shadow-md">
             <span className="text-2xl">🔥</span>
             <h4 className="font-black text-orange-900 uppercase mt-2">COMBO ATIVO!</h4>
-            <p className="text-orange-950 text-sm mt-1">Comida + Café = <strong>R$ 10,00</strong></p>
+            <p className="text-orange-950 text-sm mt-1">Qualquer Comida + Café = <strong>R$ 10,00</strong></p>
           </div>
 
           <div className="grid grid-cols-1 gap-4">
@@ -414,8 +484,8 @@ export default function ClientePainel() {
                     qtd > 0 ? "bg-amber-400 border-orange-600 border-4 shadow-lg scale-[1.02]" : "bg-amber-100 border-amber-200"}`}>
                   {!disponivel && <span className="absolute top-2 right-2 bg-red-500 text-black text-xs px-2 py-1 rounded-full">❌ Indisponível</span>}
                   <Image src={`/produtos/${produto.imagem}`} alt={produto.nome} width={112} height={112} className="w-28 h-28 rounded-2xl border shadow-md" />
-                  <h3 className="font-black text-xl text-orange-600 uppercase">{produto.nome}</h3>
-                  <span className="font-black text-lg text-emerald-600">R$ {preco.toFixed(2)}</span>
+                  <h3 className="font-black text-xl text-orange-600 uppercase text-center">{produto.nome}</h3>
+                  <span className="font-black text-lg text-emerald-600 text-center w-full">R$ {preco.toFixed(2)}</span>
                   <div className="flex items-center gap-2 bg-stone-200 rounded-2xl p-1.5 w-full max-w-[200px] justify-center">
                     {qtd > 0 && (
                       <>
@@ -434,25 +504,12 @@ export default function ClientePainel() {
         </div>
       )}
 
-      {etapa === "observacao" && (
+      {/* === ETAPA 2: DADOS PESSOAIS === */}
+      {etapa === "dados" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
           <div className="flex items-center gap-2 border-b pb-3">
-            <button onClick={() => setEtapa("menu")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Voltar</button>
-            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Preferências</h2>
-          </div>
-          <div className="bg-white border p-6 rounded-3xl shadow-md">
-            <h2 className="text-xl font-black text-center mb-4">ALGUMA OBSERVAÇÃO?</h2>
-            <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex: sem açúcar, bem quente..." rows={4} className="w-full bg-[#FFFAF5] border rounded-2xl p-4 text-sm outline-none" />
-            <button onClick={() => setEtapa("checkout")} className="w-full py-3 mt-4 bg-orange-500 text-black font-black rounded-xl">Continuar →</button>
-          </div>
-        </div>
-      )}
-
-      {etapa === "checkout" && (
-        <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
-          <div className="flex items-center gap-2 border-b pb-3">
-            <button onClick={() => setEtapa("observacao")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Voltar</button>
-            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Dados de Entrega</h2>
+            <button onClick={() => setEtapa("menu")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Cardápio</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Seus Dados</h2>
           </div>
 
           {mostrarAvisoDados && (
@@ -462,104 +519,212 @@ export default function ClientePainel() {
             </div>
           )}
 
-          <form onSubmit={irParaConferencia} className="space-y-4">
-            {erroValidacao && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                <div className="bg-red-50 border-4 border-red-600 p-5 rounded-2xl text-center max-w-xs w-full">
-                  <p className="font-black text-lg">⚠️ {erroValidacao}</p>
-                  <button onClick={() => setErroValidacao(null)} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg">Entendi</button>
-                </div>
+          {erroValidacao && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+              <div className="bg-red-50 border-4 border-red-600 p-5 rounded-2xl text-center max-w-xs w-full">
+                <p className="font-black text-lg">⚠️ {erroValidacao}</p>
+                <button onClick={() => setErroValidacao(null)} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg">Entendi</button>
               </div>
-            )}
+            </div>
+          )}
 
-            <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
-              <div id="campo-nome">
-                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Seu Nome *</label>
-                <input type="text" value={nome} onChange={(e) => setNome(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+          <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
+            <div>
+              <label className="text-xs font-black text-orange-500 uppercase block mb-1">Seu Nome *</label>
+              <input type="text" value={nome} onChange={(e) => setNome(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Endereço *</label>
+                <input type="text" value={endereco} onChange={(e) => setEndereco(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
               </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div id="campo-endereco" className="col-span-2">
-                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Endereço *</label>
-                  <input type="text" value={endereco} onChange={(e) => setEndereco(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
-                </div>
-                <div id="campo-numero">
-                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Número *</label>
-                  <input type="text" inputMode="numeric" value={numeroCasa} onChange={(e) => setNumeroCasa(e.target.value.replace(/\D/g, ""))} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-center font-black" />
-                </div>
-              </div>
-
               <div>
-                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Referência</label>
-                <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Número *</label>
+                <input type="text" inputMode="numeric" value={numeroCasa} onChange={(e) => setNumeroCasa(e.target.value.replace(/\D/g, ""))} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-center font-black" />
               </div>
+            </div>
 
-              <div id="campo-telefone">
-                <label className="font-black text-lg uppercase text-orange-600 block text-center mb-2">WhatsApp</label>
-                <input type="tel" maxLength={11} value={telefone} onChange={(e) => { const num = e.target.value.replace(/\D/g, "").slice(0,11); setTelefone(num); }} placeholder="919XXXXXXX" className={`w-full p-4 rounded-xl border-2 text-center font-black ${telefone && !validarTelefone(telefone) ? "border-red-500 text-red-700" : "border-orange-400"}`} />
-                {telefone && !validarTelefone(telefone) && <p className="text-red-600 text-sm text-center mt-2">Digite começando com 919</p>}
-              </div>
+            <div>
+              <label className="text-xs font-black text-orange-500 uppercase block mb-1">Referência</label>
+              <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+            </div>
 
-              <div id="campo-horario" className="pt-4 border-t space-y-4">
-                <label className="text-sm font-black text-orange-600 uppercase text-center block">Dia da Entrega *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {diasPermitidosParaEntrega().length === 0 ? <p className="text-red-600 col-span-3 text-center">Nenhum dia disponível</p> :
-                    diasPermitidosParaEntrega().map(dia => (
-                      <button key={dia.valor} type="button" onClick={() => { setDiaEscolhido(dia); setHorario(""); }} className={`py-3 rounded-lg font-bold ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black" : "bg-white border"}`}>
-                        {dia.nome}
-                      </button>
-                    ))
-                  }
+            <div>
+              <label className="font-black text-lg uppercase text-orange-600 block text-center mb-2">WhatsApp</label>
+              <input type="tel" maxLength={11} value={telefone} onChange={(e) => { setTelefone(e.target.value.replace(/\D/g, "").slice(0, 11)) }} placeholder="919XXXXXXXX" className={`w-full p-4 rounded-xl border-2 text-center font-black ${telefone && !validarTelefone(telefone) ? "border-red-500 text-red-700" : "border-orange-400"}`} />
+              {telefone && !validarTelefone(telefone) && <p className="text-red-600 text-sm text-center mt-2">Digite começando com 919</p>}
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* === ETAPA 3: OBSERVAÇÃO POR ITEM === */}
+      {etapa === "observacao" && (
+        <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("dados")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Dados</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Observações</h2>
+          </div>
+
+          <p className="text-sm text-zinc-500 text-center">Deixe uma observação para cada item (opcional)</p>
+
+          <div className="space-y-3">
+            {Object.entries(itens).map(([chave, qtd]) => {
+              if (qtd === 0) return null
+              const prod = DETALHES_PRODUTOS[chave]
+              const obsArray = observacoesItem[chave] || []
+              return Array.from({ length: qtd }).map((_, idx) => (
+                <div key={`${chave}-${idx}`} className="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{prod.icone}</span>
+                    <span className="font-black text-sm">{qtd > 1 ? `${idx + 1}x ` : ""}{prod.nome}</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={obsArray[idx] || ""}
+                    onChange={(e) => setObservacoesItem(prev => {
+                      const current = [...(prev[chave] || [])]
+                      current[idx] = e.target.value
+                      return { ...prev, [chave]: current }
+                    })}
+                    placeholder="Ex: sem cebola, bem torrado..."
+                    className="w-full bg-[#FFFAF5] border border-amber-300 rounded-xl p-3 text-sm placeholder:text-zinc-400 focus:outline-none focus:border-orange-500"
+                  />
                 </div>
+              ))
+            })}
+          </div>
 
-                {diaEscolhido && (
-                  <div>
-                    <label className="text-sm font-black text-orange-600 uppercase text-center block mt-4">Horário *</label>
-                    <button type="button" onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)} className={`w-full py-4 border-4 rounded-2xl font-black text-xl ${horario ? "border-emerald-500 text-emerald-600" : "border-orange-500 text-orange-600 animate-pulse"}`}>
-                      {horario || "Toque para escolher horário"}
+          <div className="flex gap-3">
+            <button onClick={() => setEtapa("horario")} className="flex-1 py-3.5 bg-zinc-200 text-zinc-600 font-black rounded-xl text-sm">
+              Pular
+            </button>
+            <button onClick={() => setEtapa("horario")} className="flex-1 py-3.5 bg-orange-500 text-black font-black rounded-xl text-sm">
+              Continuar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* === ETAPA 4: DIA E HORÁRIO === */}
+      {etapa === "horario" && (
+        <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("observacao")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Observações</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Dia e Horário</h2>
+          </div>
+
+          {erroValidacao && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+              <div className="bg-red-50 border-4 border-red-600 p-5 rounded-2xl text-center max-w-xs w-full">
+                <p className="font-black text-lg">⚠️ {erroValidacao}</p>
+                <button onClick={() => setErroValidacao(null)} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg">Entendi</button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
+            <div>
+              <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Dia da Entrega *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {diasPermitidosParaEntrega().length === 0 ? (
+                  <p className="text-red-600 col-span-3 text-center">Nenhum dia disponível</p>
+                ) : (
+                  diasPermitidosParaEntrega().map(dia => (
+                    <button key={dia.valor} onClick={() => { setDiaEscolhido(dia); setHorario("") }}
+                      className={`py-3 rounded-lg font-bold ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black" : "bg-white border"}`}>
+                      {dia.nome}
                     </button>
-                    {mostrarListaHorarios && (
-                      <div className="mt-2 grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-3 bg-[#FFFAF5] border-2 border-orange-500 rounded-xl">
-                        {horariosPermitidosParaDia().length === 0 ? <p className="text-red-600 col-span-4 text-center">Sem horários</p> :
-                          horariosPermitidosParaDia().map((hora: string) => (
-                            <button key={hora} onClick={() => { setHorario(hora); setMostrarListaHorarios(false); }} className={`py-3 rounded-lg font-bold ${horario === hora ? "bg-orange-500 text-black" : "bg-white border"}`}>
-                              {hora}
-                            </button>
-                          ))
-                        }
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-4 border-t">
-                <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Forma de Pagamento</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setPagamento("Pix")} className={`p-4 rounded-xl font-black uppercase ${pagamento === "Pix" ? "bg-emerald-600 text-white" : "bg-[#FFFAF5] border"}`}>📲 PIX</button>
-                  <button type="button" onClick={() => setPagamento("Dinheiro")} className={`p-4 rounded-xl font-black uppercase ${pagamento === "Dinheiro" ? "bg-orange-500 text-white" : "bg-[#FFFAF5] border"}`}>💵 DINHEIRO</button>
-                </div>
-
-                {pagamento === "Pix" && <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 mt-3 text-center"><p className="font-black text-sm">Total: R$ {valorTotalFinal.toFixed(2)}</p></div>}
-                {pagamento === "Dinheiro" && (
-                  <div className="mt-3 space-y-3">
-                    <label className="text-sm font-black text-orange-600 uppercase block text-center">Precisa de troco?</label>
-                    <input type="text" inputMode="numeric" value={trocoPara} onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ""))} placeholder="Valor da nota" className="w-full p-3 border rounded-xl text-center font-black" />
-                    {trocoCalculado > 0 && <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 text-center"><p>Troco: <strong>R$ {trocoCalculado.toFixed(2)}</strong></p></div>}
-                  </div>
+                  ))
                 )}
               </div>
             </div>
 
-            <button type="submit" className="w-full py-4 bg-orange-500 text-black font-black uppercase rounded-xl shadow-md">Conferir Pedido →</button>
-          </form>
+            {diaEscolhido && (
+              <div>
+                <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Horário *</label>
+                <button onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)}
+                  className={`w-full py-4 border-4 rounded-2xl font-black text-xl ${horario ? "border-emerald-500 text-emerald-600" : "border-orange-500 text-orange-600 animate-pulse"}`}>
+                  {horario || "Toque para escolher horário"}
+                </button>
+                {mostrarListaHorarios && (
+                  <div className="mt-2 grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-3 bg-[#FFFAF5] border-2 border-orange-500 rounded-xl">
+                    {horariosPermitidosParaDia().length === 0 ? (
+                      <p className="text-red-600 col-span-4 text-center">Sem horários</p>
+                    ) : (
+                      horariosPermitidosParaDia().map((hora: string) => (
+                        <button key={hora} onClick={() => { setHorario(hora); setMostrarListaHorarios(false) }}
+                          className={`py-3 rounded-lg font-bold ${horario === hora ? "bg-orange-500 text-black" : "bg-white border"}`}>
+                          {hora}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {diaEscolhido && horario && (
+              <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-3 text-center">
+                <p className="text-emerald-700 font-black">✅ Entrega: {diaEscolhido.nome} às {horario}</p>
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
+      {/* === ETAPA 4: PAGAMENTO === */}
+      {etapa === "pagamento" && (
+        <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("horario")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Horário</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Pagamento</h2>
+          </div>
+
+          <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
+          <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setPagamento("Pix")}
+                className={`p-4 rounded-xl font-black uppercase ${pagamento === "Pix" ? "bg-emerald-600 text-white" : "bg-[#FFFAF5] border"}`}>
+                📲 PIX
+              </button>
+              <button onClick={() => setPagamento("Dinheiro")}
+                className={`p-4 rounded-xl font-black uppercase ${pagamento === "Dinheiro" ? "bg-orange-500 text-white" : "bg-[#FFFAF5] border"}`}>
+                💵 DINHEIRO
+              </button>
+            </div>
+
+            {pagamento === "Pix" && (
+              <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-4 text-center">
+                <p className="font-black text-sm">Total a pagar</p>
+                <p className="text-3xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
+              </div>
+            )}
+
+            {pagamento === "Dinheiro" && (
+              <div className="space-y-3">
+                <label className="text-sm font-black text-orange-600 uppercase block text-center">Precisa de troco?</label>
+                <input type="text" inputMode="numeric" value={trocoPara} onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ""))} placeholder="Valor da nota" className="w-full p-3 border rounded-xl text-center font-black" />
+                {trocoCalculado > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 text-center">
+                    <p>Troco: <strong>R$ {trocoCalculado.toFixed(2)}</strong></p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {/* === ETAPA 5: CONFIRMAÇÃO === */}
       {etapa === "confirmacao" && (
         <div className="max-w-md mx-auto px-3 mt-4 space-y-4">
           <div className="flex items-center gap-2 border-b pb-3">
-            <button onClick={() => setEtapa("checkout")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Alterar Dados</button>
+            <button onClick={() => setEtapa("pagamento")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Pagamento</button>
             <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Revisão do Pedido</h2>
           </div>
 
@@ -578,10 +743,17 @@ export default function ClientePainel() {
                 if (qtd === 0) return null
                 const prod = DETALHES_PRODUTOS[chave]
                 const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+                const obsArray = observacoesItem[chave] || []
                 return (
-                  <div key={chave} className="flex justify-between items-center py-2 border-b">
-                    <span>{prod.icone} {qtd}x {prod.nome}</span>
-                    <span className="font-black">R$ {(preco * qtd).toFixed(2)}</span>
+                  <div key={chave} className="text-center py-2 border-b border-zinc-100 last:border-0">
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{prod.icone}</span>
+                      <span className="font-black">{qtd}x {prod.nome}</span>
+                    </div>
+                    <span className="block font-black text-emerald-600">R$ {(preco * qtd).toFixed(2)}</span>
+                    {obsArray.map((obs, idx) => obs ? (
+                      <span key={idx} className="block text-xs text-zinc-500 italic mt-0.5">{qtd > 1 ? `${idx + 1}x: ` : ""}{obs}</span>
+                    ) : null)}
                   </div>
                 )
               })}
@@ -598,21 +770,63 @@ export default function ClientePainel() {
               <p className="text-2xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
             </div>
 
-            <button onClick={processarEnvioPedido} disabled={enviandoPedido} className="w-full py-4 bg-emerald-600 text-black font-black uppercase rounded-xl mt-4">
-              {enviandoPedido ? "Processando..." : "✅ CONFIRMAR PEDIDO"}
+            <button onClick={processarEnvioPedido} disabled={enviandoPedido}
+              className="w-full py-4 bg-emerald-600 text-black font-black uppercase rounded-xl mt-4 disabled:opacity-50">
+              {enviandoPedido ? "Processando..." : pagamento === "Pix" ? "📲 GERAR PIX" : "✅ CONFIRMAR PEDIDO"}
             </button>
           </div>
         </div>
       )}
 
-      {totalItensSelecionados > 0 && (etapa === "menu" || etapa === "checkout") && (
+      {/* === PIX MODAL: COPIAR → DEPOIS FINALIZAR === */}
+      {statusPix === "copiado" && codigoPix && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-white border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 text-center shadow-2xl space-y-5">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl flex items-center justify-center mx-auto">📲</div>
+            <h3 className="text-xl font-black text-emerald-400 uppercase">PIX GERADO!</h3>
+            <p className="text-center">Olá <strong className="text-orange-500">{nome || "CLIENTE"}</strong></p>
+
+            <div className="bg-[#FFFAF5] p-3 rounded-xl break-all text-xs text-center border">{codigoPix}</div>
+
+            {/* PRIMEIRA ETAPA: COPIAR PIX */}
+            {!pixCopiado && (
+              <button onClick={async () => {
+                const ok = await executarCopiaTexto(codigoPix)
+                if (ok) {
+                  setPixCopiado(true)
+                  setMostrarMensagemCopiado(true)
+                  setTimeout(() => setMostrarMensagemCopiado(false), 2500)
+                } else {
+                  alert("Erro ao copiar. Selecione o texto manualmente.")
+                }
+              }} className="w-full py-3.5 bg-orange-500 text-black font-black rounded-xl uppercase tracking-widest shadow-lg">
+                📋 COPIAR PIX
+              </button>
+            )}
+
+            {/* DEPOIS DE COPIAR: APARECE FINALIZAR */}
+            {pixCopiado && (
+              <button onClick={salvarPedidoNoBanco} disabled={enviandoPedido}
+                className="w-full py-3.5 bg-emerald-500 text-black font-black rounded-xl uppercase tracking-widest shadow-lg disabled:opacity-40">
+                {enviandoPedido ? "GRAVANDO..." : "✅ FINALIZAR PEDIDO"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* === BOTTOM BAR === */}
+      {totalItensSelecionados > 0 && (etapa === "menu" || etapa === "dados" || etapa === "observacao" || etapa === "horario" || etapa === "pagamento") && (
         <div className="fixed bottom-4 left-3 right-3 z-40 max-w-xl mx-auto">
           <div className="bg-white border p-4 rounded-xl shadow-lg flex justify-between items-center">
             <div>
               <span className="text-sm font-black text-orange-600">{totalItensSelecionados} {totalItensSelecionados === 1 ? "item" : "itens"}</span>
               <p className="text-xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
             </div>
-            {etapa === "menu" && <button onClick={() => setEtapa("observacao")} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
+            {etapa === "menu" && <button onClick={irParaDados} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
+            {etapa === "dados" && <button onClick={irParaObservacao} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
+            {etapa === "horario" && <button onClick={irParaPagamento} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
+            {etapa === "pagamento" && <button onClick={irParaConfirmacao} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Conferir →</button>}
           </div>
         </div>
       )}

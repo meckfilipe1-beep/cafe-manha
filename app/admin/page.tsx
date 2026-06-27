@@ -147,7 +147,9 @@ export default function AdminPainel() {
   const [mostrarModalCopiado, setMostrarModalCopiado] = useState(false);
   const [pedidoSelecionadoParaConcluir, setPedidoSelecionadoParaConcluir] = useState<any | null>(null);
   const [mostrarResumoFinalAvulso, setMostrarResumoFinalAvulso] = useState(false);
+  const [statusAvulsoSelecionado, setStatusAvulsoSelecionado] = useState<"pago" | "espera" | "pendente" | null>(null);
   const [pedidoDetalhado, setPedidoDetalhado] = useState<any | null>(null);
+  const [submenuAcoes, setSubmenuAcoes] = useState<"principal" | "concluir" | "zap">("principal");
   const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false);
   const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
   const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
@@ -346,7 +348,7 @@ export default function AdminPainel() {
   function chamarClienteWhatsapp(pedido: any) {
     if (!pedido.telefone) { alert("Cliente não informou telefone."); return; }
     const numero = pedido.telefone.replace(/\D/g, "");
-    const mensagem = `Olá ${pedido.nome} 😊\nSeu pedido da Tapicuz já está sendo preparado.\n⏰ Horário: ${pedido.horario}\nObrigado pela preferência! 🧡`;
+    const mensagem = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz já está sendo preparado.\nHorário: ${pedido.horario}\nObrigado pela preferência.`;
     const link = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`;
     if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
       (async () => {
@@ -516,10 +518,11 @@ export default function AdminPainel() {
     } catch (error) { console.error(error); }
   }
 
-  async function processarDecisaoPedidoExistente(foiPago: boolean) {
-    if (!pedidoSelecionadoParaConcluir || !usuarioLogado) return;
+  async function processarDecisaoPedidoExistente(foiPago: boolean, pedidoOverride?: any) {
+    const pedido = pedidoOverride || pedidoSelecionadoParaConcluir;
+    if (!pedido || !usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", pedidoSelecionadoParaConcluir.id), { concluido: true, statusPagamento: foiPago ? "pago" : "pendente" });
+      await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: foiPago ? "pago" : "pendente" });
       setNotificacaoCaixa(foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       setPedidoSelecionadoParaConcluir(null);
@@ -571,7 +574,7 @@ export default function AdminPainel() {
 
   function executarCopiaResumo() {
     const itensTxt = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
-    const textoFinal = `━━━━━━━━━━━━━━━━━━\n☕ TAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\n📍 Entrega:\n${enderecoCompletoConstruido}\n\n🛒 Itens:\n${itensTxt || "Nenhum item selecionado"}\n${observacaoPedido ? `📝 Observação:\n${observacaoPedido}\n` : ""}\n💳 Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\n💰 Total:\nR$ ${valorTotalAvulso}\n${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `💵 Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}━━━━━━━━━━━━━━━━━━`;
+    const textoFinal = `━━━━━━━━━━━━━━━━━━\nTAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\nEntrega:\n${enderecoCompletoConstruido}\n\nItens:\n${itensTxt || "Nenhum item selecionado"}\n${observacaoPedido ? `Observação:\n${observacaoPedido}\n` : ""}Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\nTotal:\nR$ ${valorTotalAvulso}\n${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}━━━━━━━━━━━━━━━━━━`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(textoFinal).then(() => setMostrarModalCopiado(true)).catch(err => console.error("Erro na cópia", err));
     } else {
@@ -585,7 +588,7 @@ export default function AdminPainel() {
   }
 
   const enviarMensagemNotificacaoWhats = (nomeCliente: string, telefone: string = "") => {
-    const msg = `Olá, ${nomeCliente}! ☕\nSeu pedido da Tapicuz já foi entregue.\nCaso o pagamento ainda não tenha sido realizado, pedimos a gentileza de efetuá-lo assim que possível.\nSe o pagamento já foi realizado, desconsidere esta mensagem e muito obrigado pela preferência! ❤️\nTenha um excelente dia.`;
+    const msg = `Olá, ${nomeCliente}!\nSeu pedido da Tapicuz já foi entregue.\nCaso o pagamento ainda não tenha sido realizado, pedimos a gentileza de efetuá-lo assim que possível.\nSe o pagamento já foi realizado, desconsidere esta mensagem e muito obrigado pela preferência.\nTenha um excelente dia.`;
     const numeroLimpo = telefone.replace(/\D/g, "");
     const url = numeroLimpo.length >= 10 ? `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
     if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
@@ -1030,6 +1033,57 @@ export default function AdminPainel() {
             </div>
           </div>
         )}
+
+        {/* 📢 DIVULGAÇÃO */}
+        <div className="mt-8 border-t border-[#F3F4F6] pt-8">
+          <h3 className="text-xl font-black text-orange-500 uppercase mb-4 flex items-center justify-center gap-3 tracking-wider text-center">
+            📢 Divulgação
+          </h3>
+          <div className="max-w-xl mx-auto bg-white border-2 border-orange-200 rounded-2xl p-6 text-center space-y-4">
+            <p className="text-sm font-bold text-zinc-500 uppercase tracking-wide">Link do Cardápio</p>
+            <div className="bg-orange-50 border border-orange-300 rounded-xl p-4 break-all">
+              <a
+                href="https://tapicuz-admin-gujb.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-orange-600 font-black text-sm underline hover:text-orange-800"
+              >
+                https://tapicuz-admin-gujb.vercel.app/
+              </a>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText("https://tapicuz-admin-gujb.vercel.app/").then(() => {
+                    const el = document.createElement('div');
+                    el.innerText = 'LINK COPIADO!';
+                    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#10b981;color:white;font-weight:900;font-size:16px;padding:16px 32px;border-radius:14px;z-index:99999;box-shadow:0 6px 16px rgba(0,0,0,0.2);border:2px solid #059669;text-transform:uppercase;letter-spacing:0.5px;';
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 2800);
+                  }).catch(() => alert("Erro ao copiar"));
+                }}
+                className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+              >
+                Copiar Link
+              </button>
+              <button
+                onClick={() => {
+                  const texto = "Confira nosso cardapio! https://tapicuz-admin-gujb.vercel.app/";
+                  const url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                    (async () => {
+                      try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                      catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                    })();
+                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                }}
+                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+              >
+                WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     )}
 
@@ -1082,10 +1136,7 @@ export default function AdminPainel() {
 
                       <div className="flex justify-between items-center pt-2">
       <div className="space-y-1.5">
-        {/* 💰 VALOR TOTAL (VERDE) */}
         <p className="text-xl font-black text-emerald-600">R$ {pedido.valorTotal.toFixed(2)}</p>
-        
-        {/* 🔴 TROCO - TAMANHO PEQUENO, DO JEITO QUE FICOU BOM */}
         {pedido.pagamento === "Dinheiro" && (() => {
           const valorTroco = pedido.trocoPara || pedido.troco || 0;
           if (valorTroco > 0) {
@@ -1106,13 +1157,29 @@ export default function AdminPainel() {
         })()}
       </div>
 
-      {/* ✅ BOTÃO CONCLUIR - AUMENTADO, BONITO E DESTAQUE */}
-      <button
-        onClick={() => setPedidoSelecionadoParaConcluir(pedido)}
-        className="text-base font-black bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-lg px-5 py-2 shadow-md hover:bg-emerald-500/30 transition-all whitespace-nowrap uppercase leading-none"
-      >
-        ✅ Concluir
-      </button>
+      <div className="flex items-center gap-2 relative">
+        <button
+          onClick={() => setPedidoDetalhado(pedido)}
+          className="px-3 py-2 bg-sky-500/20 text-sky-700 border border-sky-500/40 rounded-lg font-black text-lg hover:bg-sky-500/30 transition-all leading-none"
+          title="Ver detalhes do pedido"
+        >
+          👁️
+        </button>
+
+        <button
+          onClick={() => {
+            if (pedidoSelecionadoParaConcluir?.id === pedido.id) {
+              setPedidoSelecionadoParaConcluir(null);
+            } else {
+              setPedidoSelecionadoParaConcluir(pedido);
+              setSubmenuAcoes("principal");
+            }
+          }}
+          className="text-base font-black bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-lg px-4 py-2 shadow-md hover:bg-emerald-500/30 transition-all whitespace-nowrap uppercase leading-none"
+        >
+          OPÇÕES
+        </button>
+      </div>
     </div>
                 </div>
               ))}
@@ -1276,6 +1343,7 @@ export default function AdminPainel() {
                 <label className="block text-xs font-black text-[#71717A] uppercase mb-2">Valor Recebido</label>
                 <input
                   type="text"
+                  inputMode="numeric"
                   value={trocoParaAvulso || ""}
                   onChange={(e) => {
                     const valor = e.target.value.replace(/\D/g, "");
@@ -1481,7 +1549,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               <button
                 type="button"
                 disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pago")}
+                onClick={() => { setStatusAvulsoSelecionado("pago"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
                 💲 Pago
@@ -1489,7 +1557,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               <button
                 type="button"
                 disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("espera")}
+                onClick={() => { setStatusAvulsoSelecionado("espera"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
                 📦 Em Espera
@@ -1497,7 +1565,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               <button
                 type="button"
                 disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => finalizarPedidoAvulsoComStatusRoteado("pendente")}
+                onClick={() => { setStatusAvulsoSelecionado("pendente"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
                 ⏳ Pendente
@@ -1507,6 +1575,104 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         </div>
       </div>
     </form>
+  </div>
+)}
+
+{/* ✅ MODAL RESUMO AVULSO */}
+{mostrarResumoFinalAvulso && statusAvulsoSelecionado && (
+  <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-white border-4 border-orange-500 w-full max-w-lg rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="flex justify-between items-center mb-4 border-b-2 border-orange-200 pb-3">
+        <h3 className="text-lg font-black text-orange-600 uppercase">Resumo do Pedido</h3>
+        <button onClick={() => { setMostrarResumoFinalAvulso(false); setStatusAvulsoSelecionado(null); }} className="w-8 h-8 bg-orange-100 hover:bg-orange-200 rounded-full flex items-center justify-center text-orange-700 text-lg font-black">X</button>
+      </div>
+
+      <div className="space-y-3">
+        <div className="bg-orange-50 rounded-2xl p-4 border-2 border-orange-200 space-y-2">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide">Cliente</p>
+              <p className="font-black text-xl text-black uppercase">{nomeAvulso || "NÃO INFORMADO"}</p>
+            </div>
+            <span className={`px-4 py-2 rounded-xl text-sm font-black uppercase border-2 ${pagamentoAvulso === "Pix" ? "bg-emerald-100 text-emerald-800 border-emerald-400" : "bg-amber-100 text-amber-800 border-amber-400"}`}>
+              {pagamentoAvulso}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide">Horario</p>
+              <p className="font-black text-xl text-orange-600">{horarioAvulso}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide">Valor Total</p>
+              <p className="font-black text-xl text-emerald-700">R$ {valorTotalAvulso}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border-2 border-orange-200">
+          <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide mb-1">Endereco</p>
+          <p className="font-black text-base text-black">{ruaAvulso || "NÃO INFORMADO"}, Nº {numeroAvulso || "-"}{referenciaAvulso ? ` - ${referenciaAvulso}` : ""}</p>
+          {observacaoAvulso && <p className="text-sm font-bold text-red-700 bg-red-100 border border-red-300 p-3 rounded-xl mt-2">{observacaoAvulso}</p>}
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border-2 border-orange-200">
+          <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide mb-2">Itens</p>
+          {Object.entries(itensAvulsos).filter(([_, qtd]) => (qtd as number) > 0).length === 0 ? (
+            <p className="text-zinc-400 font-bold text-center py-3">Nenhum item selecionado</p>
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(itensAvulsos).map(([chave, qtd]) => {
+                if ((qtd as number) <= 0) return null;
+                const prod = produtos.find(p => p.chave === chave);
+                return (
+                  <div key={chave} className="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                    <span className="font-black text-base text-black">{prod?.nome || chave}</span>
+                    <span className="font-black text-orange-600 text-base">{(qtd as number)}x</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 && (
+          <div className="bg-amber-50 rounded-2xl p-4 border-2 border-amber-300 text-center">
+            <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide">Troco</p>
+            <p className="text-xl font-black text-amber-700">R$ {trocoAvulsoCalculado.toFixed(2)}</p>
+          </div>
+        )}
+
+        <div className="bg-zinc-50 rounded-2xl p-4 border-2 border-zinc-300 text-center">
+          <p className="text-sm font-medium text-zinc-500 uppercase tracking-wide">Status</p>
+          <p className="text-xl font-black mt-1 uppercase">
+            {statusAvulsoSelecionado === "pago" && <span className="text-emerald-600">PAGO</span>}
+            {statusAvulsoSelecionado === "espera" && <span className="text-blue-600">EM ESPERA</span>}
+            {statusAvulsoSelecionado === "pendente" && <span className="text-amber-600">PENDENTE</span>}
+          </p>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={() => { setMostrarResumoFinalAvulso(false); setStatusAvulsoSelecionado(null); }}
+            className="flex-1 py-3.5 bg-zinc-300 hover:bg-zinc-400 text-zinc-700 font-black uppercase text-sm rounded-xl transition-all"
+          >
+            Voltar
+          </button>
+          <button
+            onClick={() => {
+              const status = statusAvulsoSelecionado;
+              setMostrarResumoFinalAvulso(false);
+              setStatusAvulsoSelecionado(null);
+              finalizarPedidoAvulsoComStatusRoteado(status);
+            }}
+            className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 )}
 
@@ -1678,10 +1844,15 @@ Agradecemos a preferência.`;
               {Object.entries(pedidoDetalhado.itens).map(([chave, qtd]) => {
                 if ((qtd as number) <= 0) return null;
                 return (
-                  <div key={chave} className="flex justify-between items-center bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
-                    <span className="font-black text-base text-black">{formatarNomeItem(chave)}</span>
-                    <span className="font-black text-orange-600 text-base">{(qtd as number)}x</span>
-                  </div>
+                    <div key={chave} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-base text-black">{formatarNomeItem(chave)}</span>
+                        <span className="font-black text-orange-600 text-base">{(qtd as number)}x</span>
+                      </div>
+                      {((pedidoDetalhado.observacoesItem as Record<string, string[]>)?.[chave] || []).map((obs: string, idx: number) => obs ? (
+                        <p key={idx} className="text-xs text-zinc-500 italic mt-1 pl-1">{(qtd as number) > 1 ? `${idx + 1}x: ` : ""}{obs}</p>
+                      ) : null)}
+                    </div>
                 );
               })}
             </div>
@@ -1701,8 +1872,8 @@ Agradecemos a preferência.`;
               Marcar como Pago
             </button>
           )}
-          <button onClick={() => deletarDoHistorico(pedidoDetalhado.id)} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase rounded-xl transition-all shadow-md">
-            Excluir
+          <button onClick={() => setPedidoDetalhado(null)} className="flex-1 py-3 bg-zinc-400 hover:bg-zinc-500 text-white font-black text-xs uppercase rounded-xl transition-all shadow-md">
+            Voltar
           </button>
         </div>
       </div>
@@ -1713,230 +1884,159 @@ Agradecemos a preferência.`;
 {/* ✅ MODAL OPÇÕES DO PEDIDO */}
 {pedidoSelecionadoParaConcluir && (
   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-md rounded-3xl p-6 space-y-6 shadow-2xl">
+    <div className="bg-[#FFFAF5] border border-orange-500/30 w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl">
       <h3 className="text-lg font-black text-orange-500 uppercase text-center tracking-wider">Opções do Pedido</h3>
-      <p className="text-center text-[#71717A] font-bold">Escolha uma ação abaixo</p>
-      
-      <div className="grid grid-cols-2 gap-6 pt-3">
-        
-        <div className="relative">
-          <button
-            onClick={() => setMostrarOpcoesConcluir(!mostrarOpcoesConcluir)}
-            className="w-full py-4 bg-orange-500 text-white border-2 border-orange-600 rounded-xl font-black uppercase text-base tracking-wider hover:bg-orange-600 hover:scale-[1.02] transition-all shadow-md"
-            style={{ minHeight: '55px' }}
-          >
-            CONCLUIR
-          </button>
+      <p className="text-center text-[#71717A] font-bold text-sm">Escolha uma ação abaixo</p>
 
-          {mostrarOpcoesConcluir && (
-            <div className="absolute top-[115%] left-0 right-0 z-10 p-3 bg-white rounded-xl border border-orange-200 shadow-lg">
+      {(() => {
+        const p = pedidoSelecionadoParaConcluir;
+
+        if (submenuAcoes === "principal") {
+          return (
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={() => setSubmenuAcoes("concluir")}
+                className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
+              >
+                ✅ CONCLUIR
+              </button>
+              <button
+                onClick={() => setSubmenuAcoes("zap")}
+                className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
+              >
+                📱 FUNÇÕES DO ZAP
+              </button>
+            </div>
+          );
+        }
+
+        if (submenuAcoes === "concluir") {
+          return (
+            <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  processarDecisaoPedidoExistente(true);
-                  setMostrarOpcoesConcluir(false);
-                  const mensagemCentral = document.createElement('div');
-                  mensagemCentral.innerText = 'PEDIDO MARCADO COMO PAGO!';
-                  mensagemCentral.style.cssText = `
-                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                    background: #10b981; color: white; font-weight: 900; font-size: 16px;
-                    padding: 16px 32px; border-radius: 14px; z-index: 99999;
-                    box-shadow: 0 6px 16px rgba(0,0,0,0.2); border: 2px solid #059669;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(mensagemCentral);
-                  setTimeout(() => mensagemCentral.remove(), 2800);
+                  processarDecisaoPedidoExistente(true, p);
+                  setSubmenuAcoes("principal");
+                  const el = document.createElement('div');
+                  el.innerText = 'PEDIDO MARCADO COMO PAGO!';
+                  el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#10b981;color:white;font-weight:900;font-size:16px;padding:16px 32px;border-radius:14px;z-index:99999;box-shadow:0 6px 16px rgba(0,0,0,0.2);border:2px solid #059669;text-transform:uppercase;letter-spacing:0.5px;';
+                  document.body.appendChild(el);
+                  setTimeout(() => el.remove(), 2800);
                 }}
-                className="w-full py-4 mb-4 bg-emerald-500 text-white rounded-lg font-black uppercase text-base hover:bg-emerald-600 transition-all"
-                style={{ minHeight: '48px' }}
+                className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 PAGO
               </button>
               <button
                 onClick={() => {
-                  processarDecisaoPedidoExistente(false);
-                  setMostrarOpcoesConcluir(false);
+                  processarDecisaoPedidoExistente(false, p);
+                  setSubmenuAcoes("principal");
                 }}
-                className="w-full py-4 bg-amber-400 text-white rounded-lg font-black uppercase text-base hover:bg-amber-500 transition-all"
-                style={{ minHeight: '48px' }}
+                className="w-full py-5 bg-amber-400 hover:bg-amber-500 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 PENDENTE
               </button>
+              <button
+                onClick={() => setSubmenuAcoes("principal")}
+                className="w-full py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-bold uppercase text-sm rounded-xl transition-all"
+              >
+                ← Voltar
+              </button>
             </div>
-          )}
-        </div>
+          );
+        }
 
-        <div className="relative">
-          <button
-            onClick={() => setMostrarOpcoesZap(!mostrarOpcoesZap)}
-            className="w-full py-4 bg-green-500 text-white border-2 border-green-600 rounded-xl font-black uppercase text-base tracking-wider hover:bg-green-600 hover:scale-[1.02] transition-all shadow-md"
-            style={{ minHeight: '55px' }}
-          >
-            WHATSAPP
-          </button>
-
-          {mostrarOpcoesZap && (
-            <div className="absolute top-[115%] left-0 right-0 z-10 p-3 bg-white rounded-xl border border-green-200 shadow-lg">
+        if (submenuAcoes === "zap") {
+          return (
+            <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  if (!pedidoSelecionadoParaConcluir?.telefone) {
-                    alert("Cliente não informou telefone.")
-                    return
-                  }
-                  const numero = pedidoSelecionadoParaConcluir.telefone.replace(/\D/g, "");
-                  
-                  const mensagemSaida = `*SAIU PARA ENTREGA* 🚀
-
-Olá ${pedidoSelecionadoParaConcluir.nome}!
-
-Seu pedido da Tapicuz acabou de sair e em instantes chegará até você 😊
-
-Agradecemos a preferência 🧡`;
-
-                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagemSaida)}`;
+                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
+                  const numero = p.telefone.replace(/\D/g, "");
+                  const msg = `*SAIU PARA ENTREGA*\n\nOlá ${p.nome}!\n\nSeu pedido da Tapicuz acabou de sair e em instantes chegará até você.\n\nAgradecemos a preferência.`;
+                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
                   if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-};;
-                  setMostrarOpcoesZap(false);
-
-                  const aviso = document.createElement('div');
-                  aviso.innerText = 'AVISO DE SAÍDA ENVIADO!';
-                  aviso.style.cssText = `
-                    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: #f59e0b; color: white; font-weight: 900; font-size: 14px;
-                    padding: 12px 24px; border-radius: 12px; z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid #d97706;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(aviso);
-                  setTimeout(() => aviso.remove(), 2500);
+                    (async () => {
+                      try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                      catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                    })();
+                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                  setPedidoSelecionadoParaConcluir(null);
+                  setSubmenuAcoes("principal");
+                  const el = document.createElement('div');
+                  el.innerText = 'AVISO DE SAÍDA ENVIADO!';
+                  el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f59e0b;color:white;font-weight:900;font-size:14px;padding:12px 24px;border-radius:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:2px solid #d97706;text-transform:uppercase;letter-spacing:0.5px;';
+                  document.body.appendChild(el);
+                  setTimeout(() => el.remove(), 2500);
                 }}
-                className="w-full py-4 mb-4 bg-orange-500 text-white rounded-lg font-black uppercase text-base hover:bg-orange-600 transition-all"
-                style={{ minHeight: '48px' }}
+                className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
-                AVISAR SAÍDA
+                🚀 AVISAR SAÍDA
               </button>
-              
               <button
                 onClick={() => {
-                  if (!pedidoSelecionadoParaConcluir?.telefone) {
-                    alert("Cliente não informou telefone.")
-                    return
+                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
+                  const numero = p.telefone.replace(/\D/g, "");
+                  let msg = `Olá ${p.nome}.\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${p.nome.toUpperCase()}\n*ENDEREÇO:* ${String(p.endereco || 'NÃO INFORMADO')}\n${p.observacao ? `*OBSERVAÇÃO:* ${p.observacao}\n` : ""}*HORÁRIO:* ${p.horario}\n*PAGAMENTO:* ${p.pagamento}\n`;
+                  if (p.pagamento === 'Dinheiro') {
+                    const vt = p.troco;
+                    msg += `*TROCO:* ${vt > 0 ? `R$ ${vt.toFixed(2).replace('.', ',')}` : "SEM TROCO"}\n`;
                   }
-                  const pedido = pedidoSelecionadoParaConcluir;
-                  const numero = pedido.telefone?.replace(/\D/g, "") || "";
-
-                  let mensagemCompleta = `Olá ${pedido.nome} 😊
-Seu pedido da Tapicuz foi recebido e já está sendo preparado!
-
-*=== RESUMO DO PEDIDO ===*
-
-*CLIENTE:* ${pedido.nome.toUpperCase()}
-*ENDEREÇO:* ${String(pedido.endereco || 'NÃO INFORMADO')}
-${pedido.observacao ? `*OBSERVAÇÃO:* ${pedido.observacao}\n` : ""}
-*HORÁRIO:* ${pedido.horario}
-*PAGAMENTO:* ${pedido.pagamento}
-`;
-
-                  if (pedido.pagamento === 'Dinheiro') {
-                    const valorTroco = pedido.troco;
-mensagemCompleta += `*TROCO:* ${valorTroco > 0 ? `R$ ${valorTroco.toFixed(2).replace('.', ',')}` : "SEM TROCO"}
-`;
-                  }
-
-                  mensagemCompleta += `----------------------------------------
-*ITENS DO PEDIDO*
-`;
-
+                  msg += `----------------------------------------\n*ITENS DO PEDIDO*\n`;
                   let temItens = false;
-                  if (pedido.itens && typeof pedido.itens === 'object' && !Array.isArray(pedido.itens)) {
-                    Object.entries(pedido.itens).forEach(([chave, qtd]) => {
+                  if (p.itens && typeof p.itens === 'object' && !Array.isArray(p.itens)) {
+                    Object.entries(p.itens).forEach(([chave, qtd]) => {
                       if (typeof qtd === 'number' && qtd > 0) {
-                        const prod = produtos.find(p => p.chave === chave);
-                        if (prod) {
-                          mensagemCompleta += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace('.', ',')}
-`;
-                          temItens = true;
-                        }
+                        const prod = produtos.find(pr => pr.chave === chave);
+                        if (prod) { msg += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * (qtd as number)).toFixed(2).replace('.', ',')}\n`; temItens = true; }
                       }
                     });
                   }
-                  if (!temItens && pedido.itens && Array.isArray(pedido.itens)) {
-                    pedido.itens.forEach(item => {
-                      if (item.quantidade > 0) {
-                        mensagemCompleta += `• ${item.quantidade}x ${item.nome} - R$ ${(item.preco * item.quantidade).toFixed(2).replace('.', ',')}
-`;
-                        temItens = true;
-                      }
+                  if (!temItens && p.itens && Array.isArray(p.itens)) {
+                    p.itens.forEach((item: any) => {
+                      if (item.quantidade > 0) { msg += `• ${item.quantidade}x ${item.nome} - R$ ${(item.preco * item.quantidade).toFixed(2).replace('.', ',')}\n`; temItens = true; }
                     });
                   }
-                  if (!temItens) {
-                    mensagemCompleta += `• NENHUM ITEM CADASTRADO
-`;
-                  }
-
-                  mensagemCompleta += `----------------------------------------
-*VALOR TOTAL:* R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}
-
-Agradecemos muito a preferência! 🧡`;
-
-const url = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagemCompleta)}`;
-
-if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-
-setMostrarOpcoesZap(false);
-
-                  const aviso = document.createElement('div');
-                  aviso.innerText = 'RESUMO ENVIADO COM SUCESSO!';
-                  aviso.style.cssText = `
-                    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: #10b981; color: white; font-weight: 900; font-size: 14px;
-                    padding: 12px 24px; border-radius: 12px; z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid #059669;
-                    text-transform: uppercase; letter-spacing: 0.5px;
-                  `;
-                  document.body.appendChild(aviso);
-                  setTimeout(() => aviso.remove(), 2500);
+                  if (!temItens) { msg += `• NENHUM ITEM CADASTRADO\n`; }
+                   msg += `----------------------------------------\n*VALOR TOTAL:* R$ ${p.valorTotal.toFixed(2).replace('.', ',')}\n\nAgradecemos muito a preferência!`;
+                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                    (async () => {
+                      try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                      catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                    })();
+                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                  setPedidoSelecionadoParaConcluir(null);
+                  setSubmenuAcoes("principal");
+                  const el = document.createElement('div');
+                  el.innerText = 'RESUMO ENVIADO COM SUCESSO!';
+                  el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#10b981;color:white;font-weight:900;font-size:14px;padding:12px 24px;border-radius:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:2px solid #059669;text-transform:uppercase;letter-spacing:0.5px;';
+                  document.body.appendChild(el);
+                  setTimeout(() => el.remove(), 2500);
                 }}
-                className="w-full py-4 bg-green-500 text-white rounded-lg font-black uppercase text-base hover:bg-green-600 transition-all"
-                style={{ minHeight: '48px' }}
+                className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
-                ENVIAR RESUMO
+                📋 ENVIAR RESUMO
+              </button>
+              <button
+                onClick={() => setSubmenuAcoes("principal")}
+                className="w-full py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-bold uppercase text-sm rounded-xl transition-all"
+              >
+                ← Voltar
               </button>
             </div>
-          )}
-        </div>
+          );
+        }
 
-      </div>
+        return null;
+      })()}
 
-      <button 
+      <button
         onClick={() => {
           setPedidoSelecionadoParaConcluir(null);
-          setMostrarOpcoesConcluir(false);
-          setMostrarOpcoesZap(false);
+          setSubmenuAcoes("principal");
         }}
-        className="w-full py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all mt-5 text-base"
+        className="w-full py-3 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl font-black uppercase transition-all text-base"
       >
         Cancelar
       </button>
@@ -2068,95 +2168,54 @@ setMostrarOpcoesZap(false);
 {abaAtiva === "historico" && (
   <div className="bg-[#FFFAF5] border border-[#F3E9DD] rounded-3xl p-6 shadow-lg">
     <h2 className="text-lg font-black text-orange-500 uppercase tracking-wider mb-6 flex items-center gap-2">
-      📜 Histórico de Vendas Pagas <span className="text-orange-400">({pedidosPagos.length})</span>
+      Vendas Pagas <span className="text-orange-400">({pedidosPagos.length})</span>
     </h2>
 
     {pedidosPagos.length === 0 ? (
       <div className="text-center py-14 text-zinc-500 font-medium uppercase text-sm">
-        📭 Nenhuma venda registrada no momento
+        Nenhuma venda registrada no momento
       </div>
     ) : (
-      <div className="overflow-x-auto rounded-xl border border-[#F3E9DD]">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-[#FFF7ED] border-b border-[#F3E9DD]">
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Cliente</th>
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Horário</th>
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Pagamento</th>
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider">Valor</th>
-              {/* Ajuste aqui: alinhamento e proporção */}
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-center">Status</th>
-              <th className="p-4 text-xs font-bold text-orange-700 uppercase tracking-wider text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F3E9DD]">
-            {pedidosPagos.map((pedido) => (
-              <tr 
-                key={pedido.id} 
-                className="hover:bg-[#FFEDD5]/60 transition-all duration-200 ease-in-out"
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {pedidosPagos.map((pedido) => (
+          <div
+            key={pedido.id}
+            className="bg-white border border-emerald-300/50 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+          >
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="font-black text-base uppercase text-zinc-800">{pedido.nome}</h3>
+                <p className="text-amber-700 font-bold text-sm mt-0.5">{pedido.horario}</p>
+              </div>
+              <span className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase border ${
+                pedido.pagamento === "Pix"
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                  : "bg-blue-100 text-blue-700 border-blue-300"
+              }`}>
+                {pedido.pagamento}
+              </span>
+            </div>
+
+            <p className="text-zinc-500 text-sm font-medium truncate mb-3">{pedido.endereco}</p>
+
+            <div className="flex justify-between items-center pt-2 border-t border-zinc-100">
+              <div>
+                <span className="font-mono font-black text-emerald-600 text-lg">
+                  R$ {pedido.valorTotal.toFixed(2)}
+                </span>
+                <span className="ml-2 text-[10px] font-bold uppercase text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Concluido
+                </span>
+              </div>
+              <button
+                onClick={() => setPedidoDetalhado(pedido)}
+                className="px-4 py-2 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
               >
-                {/* Cliente */}
-                <td className="p-4 max-w-[200px] group relative">
-                  <div 
-                    className="font-semibold text-zinc-800 truncate cursor-help"
-                    title={pedido.nome}
-                  >
-                    {pedido.nome}
-                  </div>
-                  <div className="absolute left-0 top-full mt-1 z-10 hidden group-hover:block bg-zinc-800 text-white text-xs rounded-md px-3 py-2 shadow-lg max-w-xs break-words">
-                    {pedido.nome}
-                  </div>
-                </td>
-
-                {/* Horário */}
-                <td className="p-4">
-                  <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md text-sm">
-                    {pedido.horario}
-                  </span>
-                </td>
-
-                {/* Pagamento */}
-                <td className="p-4">
-                  <span 
-                    className={`px-3 py-1 rounded-md text-xs font-bold uppercase ${
-                      pedido.pagamento === "Pix" 
-                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200" 
-                        : pedido.pagamento === "Dinheiro"
-                        ? "bg-blue-100 text-blue-700 border border-blue-200"
-                        : "bg-amber-100 text-amber-700 border border-amber-200"
-                    }`}
-                  >
-                    {pedido.pagamento}
-                  </span>
-                </td>
-
-                {/* Valor */}
-                <td className="p-4">
-                  <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
-                    R$ {pedido.valorTotal.toFixed(2)}
-                  </span>
-                </td>
-
-                {/* Status: centralizado e proporcional */}
-                <td className="p-4 text-center">
-                  <span className="inline-block w-max text-xs font-bold uppercase px-3 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    Concluído
-                  </span>
-                </td>
-
-                {/* Ações: alinhado à direita e proporcional */}
-                <td className="p-4 text-right">
-                  <button
-                    onClick={() => setPedidoDetalhado(pedido)}
-                    className="px-3.5 py-1.5 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
-                  >
-                    Detalhes
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                Detalhes
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     )}
   </div>
@@ -2206,6 +2265,7 @@ setMostrarOpcoesZap(false);
         <div className="flex flex-col gap-2 w-full">
           <input
             type="text"
+            inputMode="decimal"
             value={valorDespesaInput}
             onChange={(e) => {
               const valor = e.target.value.replace(/\D/g, "");
@@ -2364,6 +2424,31 @@ setMostrarOpcoesZap(false);
   </div>
 )}
 {/* Modal de confirmação */}
+{modalConfirmarTurno && (
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+      <h3 className="text-lg font-black text-orange-600 mb-2">Arquivar Turno?</h3>
+      <p className="text-sm text-zinc-600 mb-6">
+        Isso vai arquivar o caixa no histórico, apagar todos os pedidos e zerar as despesas.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => setModalConfirmarTurno(false)}
+          className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-black uppercase text-sm"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={executarFechamentoTurno}
+          className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-black rounded-xl font-black uppercase text-sm"
+        >
+          Arquivar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 {modalConfirmarZerarTudo && (
   <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
     <div className="bg-white p-6 rounded-lg max-w-sm w-full text-center">
@@ -2377,7 +2462,7 @@ setMostrarOpcoesZap(false);
           Cancelar
         </button>
         <button 
-          onClick={apagarSistemaGeralEZero} // ✅ AQUI É A CHAMADA DA FUNÇÃO
+          onClick={apagarSistemaGeralEZero}
           className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-800"
         >
           Sim, zerar tudo
