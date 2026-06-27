@@ -9,7 +9,6 @@ import { gerarPixCopiaECola } from "@/lib/pix"
 // Tipagem das etapas do app
 type Etapa = "menu" | "observacao" | "checkout" | "confirmacao" | "sucesso"
 
-/// LISTA DE VERSÍCULOS AMPLIADA
 const VERSICULOS_BENCÃO = [
   "Posso todas as coisas naquele que me fortalece. (Filipenses 4:13)",
   "Não temas, pois eu estou com você; não tenha medo, pois eu sou o seu Deus. Eu lhe darei força, eu o ajudarei e o sustentarei com a minha mão direita vitoriosa. (Isaías 41:10)",
@@ -101,9 +100,8 @@ export default function ClientePainel() {
   const [horario, setHorario] = useState("")
   const [mostrarListaHorarios, setMostrarListaHorarios] = useState(false)
   const [telefone, setTelefone] = useState("")
-const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
+  const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
 
-  // Dias da semana
   const [diaEscolhido, setDiaEscolhido] = useState<any>(null)
   const DIAS_FUNCIONAMENTO = [
     {valor:"segunda", nome:"Segunda"}, {valor:"terca", nome:"Terça"}, {valor:"quarta", nome:"Quarta"},
@@ -115,26 +113,17 @@ const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
   const [codigoPix, setCodigoPix] = useState("")
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   const [lojaManualAberta, setLojaManualAberta] = useState(true)
-  
   const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
   const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false)
 
   const [itens, setItens] = useState<{ [key: string]: number }>({
-    tapiocaMolhada: 0,
-    tapiocaManteiga: 0,
-    tapiocaQueijo: 0,
-    tapiocaOvo: 0,          
-    tapiocaQueijoOvo: 0,    
-    cuscuzMilho: 0,
-    cuscuzArroz: 0,
-    cuscuzMilhoArroz: 0,
-    cafe: 0,
+    tapiocaMolhada: 0, tapiocaManteiga: 0, tapiocaQueijo: 0, tapiocaOvo: 0,          
+    tapiocaQueijoOvo: 0, cuscuzMilho: 0, cuscuzArroz: 0, cuscuzMilhoArroz: 0, cafe: 0,
   })
+
   useEffect(() => {
-  if (dadosFuncionamento) {
-    verificarSeEstaAberto(dadosFuncionamento)
-  }
-}, [lojaManualAberta, dadosFuncionamento])
+    if (dadosFuncionamento) verificarSeEstaAberto(dadosFuncionamento)
+  }, [lojaManualAberta, dadosFuncionamento])
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -144,26 +133,19 @@ const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
       setReferencia(localStorage.getItem("tapicuz_referencia") || "")
       setTelefone(localStorage.getItem("tapicuz_telefone") || "")
     }
-  
-    // Busca configurações completas do admin
-    const refFuncionamento = doc(db, "config", "funcionamento")
-    const refStatusLoja = doc(db, "configuracoes", "funcionamento")//
 
-  const unsubscribeStatus = onSnapshot(refStatusLoja, (snap) => {
-  if (snap.exists()) {
-    const dados = snap.data()
+    // 🔧 CORREÇÃO: Usando um único caminho para evitar conflito
+    const refFuncionamento = doc(db, "configuracoes", "funcionamento")
 
-    const aberto = dados.aberta === true
-
-    setLojaManualAberta(aberto)
-
-    if (!aberto) {
-      setLojaAberta(false)
-    } else if (dadosFuncionamento) {
-      verificarSeEstaAberto(dadosFuncionamento)
-    }
-  }
-})
+    const unsubscribeStatus = onSnapshot(refFuncionamento, (snap) => {
+      if (snap.exists()) {
+        const dados = snap.data()
+        const aberto = dados.aberta === true
+        setLojaManualAberta(aberto)
+        if (!aberto) setLojaAberta(false)
+        else if (dadosFuncionamento) verificarSeEstaAberto(dadosFuncionamento)
+      }
+    })
     
     const unsubscribeFuncionamento = onSnapshot(refFuncionamento, (snap) => {
       if (snap.exists()) {
@@ -180,10 +162,9 @@ const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
       setCarregandoLoja(false)
     })
 
-    // Busca produtos do banco
     const qProdutos = query(collection(db, "produtos"))
     const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
-      const dados: { [key: string]: { disponivel: boolean; preco: number; nome: string; icone: string } } = {}
+      const dados: any = {}
       snap.forEach((doc) => {
         const p = doc.data()
         dados[p.chave] = {
@@ -203,72 +184,43 @@ const [mostrarAvisoDados, setMostrarAvisoDados] = useState(true)
     }
   }, [])
 
-       // ✅ Validação do WhatsApp: obrigatório começar com 919
-function validarTelefone(telefone: string): boolean {
-  const apenasNumeros = telefone.replace(/\D/g, "")
-
-  return (
-    apenasNumeros.startsWith("919") &&
-    apenasNumeros.length === 11
-  )
-}
-  // Verifica se loja está aberta
-function verificarSeEstaAberto(dados: any) {
-  if (!lojaManualAberta) {
-    setLojaAberta(false)
-    return
+  // ✅ Validação do WhatsApp
+  function validarTelefone(telefone: string): boolean {
+    const apenasNumeros = telefone.replace(/\D/g, "")
+    return apenasNumeros.startsWith("919") && apenasNumeros.length === 11
   }
 
-  setLojaAberta(true)
-}
-  // ✅ FUNÇÃO NOVA: Retorna apenas os dias que o admin LIBEROU PARA ENTREGA
+  function verificarSeEstaAberto(dados: any) {
+    if (!lojaManualAberta) { setLojaAberta(false); return }
+    setLojaAberta(true)
+  }
+
   function diasPermitidosParaEntrega() {
     if (!dadosFuncionamento?.diasFuncionamento) return []
-
-    return DIAS_FUNCIONAMENTO.filter(
-      dia => dadosFuncionamento.diasFuncionamento[dia.valor] === true
-    )
+    return DIAS_FUNCIONAMENTO.filter(dia => dadosFuncionamento.diasFuncionamento[dia.valor] === true)
   }
 
-  // ✅ FUNÇÃO NOVA: Retorna apenas os horários que o admin cadastrou para o dia escolhido
-function horariosPermitidosParaDia() {
-  if (!dadosFuncionamento || !diaEscolhido) return []
+  function horariosPermitidosParaDia() {
+    if (!dadosFuncionamento || !diaEscolhido) return []
+    const horarios = dadosFuncionamento.horariosPorDia?.[diaEscolhido.valor]
+    return horarios ? horarios.sort() : []
+  }
 
-  const horarios =
-    dadosFuncionamento.horariosPorDia?.[diaEscolhido.valor]
-
-  if (!horarios) return []
-
-  console.log("Horários do dia:", horarios)
-
-  return horarios.sort()
-}
   function alterarQtd(chave: string, valor: number) {
-    setItens(prev => ({
-      ...prev,
-      [chave]: Math.max(0, prev[chave] + valor)
-    }))
+    setItens(prev => ({ ...prev, [chave]: Math.max(0, prev[chave] + valor) }))
   }
 
   const totalItensSelecionados = Object.values(itens).reduce((a, b) => a + b, 0)
   
-  // Cálculos de preço e desconto
-  let subtotal = 0
-  let qtdComidas = 0
-  let qtdCafes = itens.cafe
-
+  // Cálculos
+  let subtotal = 0, qtdComidas = 0, qtdCafes = itens.cafe
   Object.entries(itens).forEach(([key, qtd]) => {
-    const precoCorreto = produtosBanco[key]?.preco ?? PRECOS_PRODUTOS[key]
-    subtotal += precoCorreto * qtd
+    const preco = produtosBanco[key]?.preco ?? PRECOS_PRODUTOS[key]
+    subtotal += preco * qtd
     if (key !== "cafe") qtdComidas += qtd
   })
 
-  let descuentoCombo = 0
-  if (qtdComidas > 0 && qtdCafes > 0) {
-    const totalCombos = Math.min(qtdComidas, qtdCafes)
-    descuentoCombo = totalCombos * 2.00
-  }
-
+  const descuentoCombo = qtdComidas > 0 && qtdCafes > 0 ? Math.min(qtdComidas, qtdCafes) * 2.00 : 0
   const valorTotalFinal = Math.max(0, subtotal - descuentoCombo)
   const trocoParaNum = parseFloat(trocoPara.replace(",", ".")) || 0
   const trocoCalculado = pagamento === "Dinheiro" && trocoParaNum > valorTotalFinal ? trocoParaNum - valorTotalFinal : 0
@@ -276,52 +228,17 @@ function horariosPermitidosParaDia() {
   function irParaConferencia(e: React.FormEvent) {
     e.preventDefault()
     setErroValidacao(null)
-
     if (!lojaAberta) return
-
-    if (valorTotalFinal === 0) {
-      setErroValidacao("Você não adicionou nenhum item ao carrinho.")
-      setEtapa("menu")
-      return
+    if (valorTotalFinal === 0) { setErroValidacao("Adicione pelo menos um item"); setEtapa("menu"); return }
+    if (!nome.trim()) { setErroValidacao("Informe seu nome"); return }
+    if (!telefone.trim() || !validarTelefone(telefone)) { 
+      setErroValidacao("WhatsApp deve começar com 919 e ter 11 dígitos"); 
+      document.getElementById("campo-telefone")?.scrollIntoView({ behavior: "smooth" }); return 
     }
-    if (!nome.trim()) {
-      setErroValidacao("Por favor, preencha o campo: Seu Nome.")
-      document.getElementById("campo-nome")?.scrollIntoView({ behavior: "smooth" })
-      return
-    }
-if (!telefone.trim()) {
-  setErroValidacao("Por favor, preencha seu WhatsApp.")
-  document.getElementById("campo-telefone")?.scrollIntoView({ behavior: "smooth" })
-  return
-}
-// ✅ NOVA VALIDAÇÃO: Obriga começar com 919
-if (!validarTelefone(telefone)) {
-  setErroValidacao("⚠️ O NÚMERO DEVE COMEÇAR COM 919! Digite o código da região primeiro.")
-  document.getElementById("campo-telefone")?.scrollIntoView({ behavior: "smooth" })
-  return
-}
-    if (!endereco.trim()) {
-      setErroValidacao("Por favor, preencha o campo: Endereço de Entrega.")
-      document.getElementById("campo-endereco")?.scrollIntoView({ behavior: "smooth" })
-      return
-    }
-    if (!numeroCasa.trim() || !/^\d+$/.test(numeroCasa)) {
-      setErroValidacao("Por favor, preencha um número válido da casa.")
-      document.getElementById("campo-numero")?.scrollIntoView({ behavior: "smooth" })
-      return
-    }
-    if (!diaEscolhido) {
-      setErroValidacao("Por favor, escolha o Dia para a sua entrega.")
-      document.getElementById("campo-horario")?.scrollIntoView({ behavior: "smooth" })
-      return
-    }
-    if (!horario) {
-      setErroValidacao("Por favor, escolha o Horário para a sua entrega.")
-      setMostrarListaHorarios(true)
-      document.getElementById("campo-horario")?.scrollIntoView({ behavior: "smooth" })
-      return
-    }
-    
+    if (!endereco.trim()) { setErroValidacao("Informe o endereço"); return }
+    if (!numeroCasa.trim() || !/^\d+$/.test(numeroCasa)) { setErroValidacao("Número da casa inválido"); return }
+    if (!diaEscolhido) { setErroValidacao("Escolha o dia da entrega"); return }
+    if (!horario) { setErroValidacao("Escolha o horário"); setMostrarListaHorarios(true); return }
     setEtapa("confirmacao")
   }
 
@@ -332,10 +249,7 @@ if (!validarTelefone(telefone)) {
         return true
       }
       return false
-    } catch (err) {
-      console.error("Erro ao copiar:", err)
-      return false
-    }
+    } catch (err) { console.error("Erro ao copiar:", err); return false }
   }
 
   async function processarEnvioPedido() {
@@ -348,19 +262,14 @@ if (!validarTelefone(telefone)) {
       try {
         setStatusPix("carregando")
         const dadosPix = await gerarPixCopiaECola(valorTotalFinal)
-        
-        if (!dadosPix || !dadosPix.payload) {
-          throw new Error("Retorno do PIX inválido ou vazio")
-        }
-
+        if (!dadosPix?.payload) throw new Error("PIX inválido")
         setCodigoPix(dadosPix.payload)
         setStatusPix("copiado")
         setMostrarAlertaPix(true)
-        
-      } catch (error) {
-        console.error("Erro crítico no fluxo do PIX:", error)
+      } catch (err) {
+        console.error(err)
         setStatusPix("erro")
-        alert("Não foi possível gerar o código PIX. Verifique a configuração da chave no sistema.")
+        alert("Não foi possível gerar o PIX")
       } finally {
         setEnviandoPedido(false)
       }
@@ -371,43 +280,28 @@ if (!validarTelefone(telefone)) {
 
   async function salvarPedidoNoBanco() {
     setEnviandoPedido(true)
-    
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tapicuz_nome", nome.trim())
-      localStorage.setItem("tapicuz_endereco", endereco.trim())
-      localStorage.setItem("tapicuz_numero", numeroCasa.trim())
-      localStorage.setItem("tapicuz_referencia", referencia.trim())
-      localStorage.setItem("tapicuz_telefone", telefone.trim())
-    }
-
-    const enderecoCompleto = `${endereco.trim()}, Nº ${numeroCasa.trim()} ${referencia.trim() ? `- Ref: ${referencia.trim()}` : ""}`
-
- const payloadPedido = {
-  nome: nome.trim(),
-  telefone: telefone.trim(),
-  endereco: enderecoCompleto,
-  observacao: observacao.trim(),
-  pagamento,
-  troco: trocoCalculado,
-  valorTotal: valorTotalFinal,
-  horario,
-  dia: diaEscolhido?.nome || "",
-  pago: pagamento === "Pix",
-  concluido: false,
-  dataCriacao: new Date().toISOString(),
-  itens
-}
-
     try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tapicuz_nome", nome.trim())
+        localStorage.setItem("tapicuz_endereco", endereco.trim())
+        localStorage.setItem("tapicuz_numero", numeroCasa.trim())
+        localStorage.setItem("tapicuz_referencia", referencia.trim())
+        localStorage.setItem("tapicuz_telefone", telefone.trim())
+      }
+
+      const enderecoCompleto = `${endereco.trim()}, Nº ${numeroCasa.trim()} ${referencia.trim() ? `- Ref: ${referencia.trim()}` : ""}`
+      const payloadPedido = {
+        nome: nome.trim(), telefone: telefone.trim(), endereco: enderecoCompleto, observacao: observacao.trim(),
+        pagamento, troco: trocoCalculado, valorTotal: valorTotalFinal, valorOriginal: subtotal, descontoCombo: descuentoCombo,
+        horario, dia: diaEscolhido?.nome || "", pago: false, concluido: false, dataCriacao: new Date().toISOString(), itens
+      }
+
       await addDoc(collection(db, "pedidos"), payloadPedido)
-      
-      const indiceAleatorio = Math.floor(Math.random() * VERSICULOS_BENCÃO.length)
-      setVersiculoEscolhido(VERSICULOS_BENCÃO[indiceAleatorio])
-      
+      setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
       setEtapa("sucesso")
-    } catch (error) {
-      console.error("Erro ao enviar pedido:", error)
-      alert("Houve um erro ao enviar o seu pedido. Por favor, tente novamente.")
+    } catch (err) {
+      console.error("Erro ao salvar:", err)
+      alert("Erro ao enviar pedido. Tente novamente.")
     } finally {
       setEnviandoPedido(false)
       setMostrarAlertaPix(false)
@@ -415,108 +309,54 @@ if (!validarTelefone(telefone)) {
   }
 
   function reiniciarPainel() {
-    setItens({ 
-      tapiocaMolhada: 0, 
-      tapiocaManteiga: 0, 
-      tapiocaQueijo: 0, 
-      tapiocaOvo: 0, 
-      tapiocaQueijoOvo: 0, 
-      cuscuzMilho: 0, 
-      cuscuzArroz: 0, 
-      cuscuzMilhoArroz: 0, 
-      cafe: 0,
-    })
-    setObservacao("") 
-    setTrocoPara("")
-    setHorario("")
-    setDiaEscolhido(null)
-    setErroValidacao(null)
-    setVersiculoEscolhido("")
-    setStatusPix("normal")
-    setCodigoPix("")
-    setEtapa("menu")
+    setItens({ tapiocaMolhada:0, tapiocaManteiga:0, tapiocaQueijo:0, tapiocaOvo:0, tapiocaQueijoOvo:0, cuscuzMilho:0, cuscuzArroz:0, cuscuzMilhoArroz:0, cafe:0 })
+    setObservacao(""); setTrocoPara(""); setHorario(""); setDiaEscolhido(null); setErroValidacao(null)
+    setVersiculoEscolhido(""); setStatusPix("normal"); setCodigoPix(""); setEtapa("menu")
   }
 
-  if (carregandoLoja) {
-    return (
-      <div className="min-h-screen bg-[#FFFAF5] flex items-center justify-center text-zinc-500 text-xs tracking-widest font-bold animate-pulse">
-        CARREGANDO CARDÁPIO...
+  if (carregandoLoja) return <div className="min-h-screen bg-[#FFFAF5] flex items-center justify-center text-zinc-500 text-xs tracking-widest font-bold animate-pulse">CARREGANDO...</div>
+
+  if (!lojaAberta) return (
+    <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
+      <div className="text-center mb-8 select-none">
+        <h1 className="text-5xl font-extrabold tracking-[0.2em] text-white uppercase drop-shadow-lg">TAPICUZ</h1>
+        <p className="text-lg font-bold text-amber-100 tracking-[0.4em] uppercase mt-2">DA SUL</p>
       </div>
-    )
-  }
-
-  if (!lojaAberta) {
-    return (
-      <div className="min-h-screen bg-orange-600 flex flex-col items-center justify-center px-4 text-center text-zinc-900">
-        <div className="text-center mb-8 select-none">
-          <h1 className="text-5xl font-extrabold tracking-[0.2em] text-white uppercase drop-shadow-lg">TAPICUZ</h1>
-          <p className="text-lg font-bold text-amber-100 tracking-[0.4em] uppercase mt-2">DA SUL</p>
-        </div>
-        <div className="max-w-md w-full bg-[#FFFFFF] border border-[#F3F4F6] p-8 rounded-3xl shadow-2xl space-y-5">
-          <div className="text-5xl animate-pulse">🌙</div>
-          <h2 className="text-xl font-black uppercase text-orange-500 tracking-wider leading-relaxed">
-            {dadosFuncionamento ? 
-              "ESTAMOS FECHADOS NO MOMENTO" 
-              : "NÃO ESTAMOS ACEITANDO PEDIDOS AGORA!"
-            }
-          </h2>
-          <p className="text-lg font-bold text-[#52525B] leading-relaxed">
-            Agradecemos sua visita! 🧡<br/>
-            Voltaremos em breve.
-          </p>
-        </div>
+      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl space-y-5">
+        <div className="text-5xl animate-pulse">🌙</div>
+        <h2 className="text-xl font-black uppercase text-orange-500">
+          {dadosFuncionamento ? "ESTAMOS FECHADOS" : "NÃO ACEITAMOS PEDIDOS AGORA"}
+        </h2>
+        <p className="text-lg text-[#52525B]">Agradecemos sua visita! 🧡 Voltaremos em breve.</p>
       </div>
-    )
-  }
+    </div>
+  )
 
- if (etapa === "sucesso") {
-    return (
-      <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
-        <div className="max-w-md w-full bg-[#FFFFFF] border-4 border-orange-500 rounded-3xl p-6 shadow-2xl space-y-5">
-          <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto shadow-inner animate-bounce">
-            ✓
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-black text-emerald-400 tracking-wider uppercase">
-              PEDIDO ENVIADO!
-            </h2>
-          </div>
+  if (etapa === "sucesso") return (
+    <div className="min-h-screen bg-[#FFFAF5] flex flex-col items-center justify-center px-4 text-center">
+      <div className="max-w-md w-full bg-white border-4 border-orange-500 rounded-3xl p-6 shadow-2xl space-y-5">
+        <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto animate-bounce">✓</div>
+        <h2 className="text-xl font-black text-emerald-400 uppercase">PEDIDO ENVIADO!</h2>
+        {versiculoEscolhido && (
+  <div className="border-2 border-amber-500/30 p-5 bg-[#FFFAF5] rounded-2xl">
+    <span className="text-sm font-bold text-amber-800 uppercase">📖 PALAVRA DO DIA</span>
+    <p className="text-lg font-black text-black mt-3 leading-relaxed">"{versiculoEscolhido}"</p>
+  </div>
+)}
 
-          {versiculoEscolhido && (
-            <div className="border-2 border-amber-500/30 py-4 my-2 space-y-3 bg-[#FFFAF5] rounded-2xl p-4 shadow-inner">
-              <span className="text-xs font-black text-amber-800 tracking-widest block uppercase">
-                📖 PALAVRA DO DIA:
-              </span>
-              <p className="text-base text-[#03030f] font-bold leading-relaxed px-1">
-                "{versiculoEscolhido}"
-              </p>
-            </div>
-          )}
-
-          <button 
-            type="button"
-            onClick={reiniciarPainel}
-            className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-black text-sm uppercase tracking-widest rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            AMÉM 🙏
-          </button>
-        </div>
+        <button onClick={reiniciarPainel} className="w-full py-3.5 bg-orange-500 hover:bg-orange-400 text-black font-black rounded-xl">AMÉM 🙏</button>
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
-    <main className="min-h-screen bg-[#FFFAF5] text-[#27272A] pb-28 font-sans antialiased selection:bg-orange-500/20">
-      
+    <main className="min-h-screen bg-[#FFFAF5] text-[#27272A] pb-28 font-sans antialiased">
       {mostrarMensagemCopiado && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-emerald-500 text-[#27272A] px-6 py-5 rounded-2xl shadow-2xl transform scale-105 transition-all max-w-[90%]">
+          <div className="bg-emerald-500 text-black px-6 py-5 rounded-2xl shadow-2xl">
             <div className="flex items-center gap-3">
               <span className="text-3xl">✅</span>
-              <div className="text-left">
-                <h3 className="font-black text-lg">CÓDIGO COPIADO!</h3>
-                <p className="text-sm text-emerald-100">Cole no app do banco 🚀</p>
-              </div>
+              <div><h3 className="font-black text-lg">CÓDIGO COPIADO!</h3><p className="text-sm">Cole no app do banco 🚀</p></div>
             </div>
           </div>
         </div>
@@ -524,173 +364,67 @@ if (!validarTelefone(telefone)) {
 
       {mostrarAlertaPix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-[#FFFFFF] border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 text-center shadow-2xl space-y-5">
-            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl flex items-center justify-center mx-auto">
-              📲
-            </div>
-            
-            <h3 className="text-xl font-black text-emerald-400 uppercase tracking-wide">
-              PIX GERADO COM SUCESSO!
-            </h3>
-            
-            <div className="space-y-4 text-[#080811] font-bold leading-snug">
-              <p className="text-base text-[#030314]">Olá,</p>
-              <p className="text-2xl font-black text-orange-500 tracking-wide uppercase break-words px-2">
-                {nome || "CLIENTE"}
-              </p>
-              <p className="text-[#27272A] pt-2 text-sm">
-                Copie o código abaixo e cole no aplicativo bancário:
-              </p>
-
-              {/* Código PIX — Tamanho bom, legível e quebra certo */}
-              <div className="bg-[#FFFAF5] p-3 rounded-xl border border-[#F3F4F6] break-all text-xs leading-relaxed text-[#27272A] select-all">
-                {codigoPix}
-              </div>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await executarCopiaTexto(codigoPix)
-                  if (ok) {
-                    setMostrarMensagemCopiado(true)
-                    setTimeout(() => setMostrarMensagemCopiado(false), 2500)
-                  } else {
-                    alert("❌ Erro ao copiar. Selecione o texto acima e copie manualmente.")
-                  }
-                }}
-                className="w-full py-3.5 bg-orange-500 text-[#27272A] font-black rounded-xl text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg"
-              >
-                📋 COPIAR PIX
-              </button>
-
-              <p className="bg-red-50 border-2 border-red-500 text-red-700 p-3 rounded-xl font-black text-xs uppercase shadow-inner text-center">
-                NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO!
-              </p>
-            </div>
-
-            <button
-              type="button"
-              disabled={enviandoPedido}
-              onClick={salvarPedidoNoBanco}
-              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-widest rounded-xl transition-all active:scale-95 shadow-lg block mt-2 disabled:opacity-40"
-            >
-              {enviandoPedido ? "GRAVANDO PEDIDO..." : "FINALIZAR ✅"}
+          <div className="bg-white border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 space-y-5">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl flex items-center justify-center mx-auto">📲</div>
+            <h3 className="text-xl font-black text-emerald-400 uppercase">PIX GERADO!</h3>
+            <p className="text-center">Olá <strong className="text-orange-500">{nome || "CLIENTE"}</strong></p>
+            <div className="bg-[#FFFAF5] p-3 rounded-xl break-all text-xs">{codigoPix}</div>
+            <button onClick={async () => {
+              const ok = await executarCopiaTexto(codigoPix)
+              ok ? (setMostrarMensagemCopiado(true), setTimeout(() => setMostrarMensagemCopiado(false), 2500)) : alert("Erro ao copiar")
+            }} className="w-full py-3 bg-orange-500 text-black font-black rounded-xl">📋 COPIAR PIX</button>
+            <button onClick={salvarPedidoNoBanco} disabled={enviandoPedido} className="w-full py-3 bg-emerald-500 text-black font-black rounded-xl">
+              {enviandoPedido ? "GRAVANDO..." : "FINALIZAR ✅"}
             </button>
           </div>
         </div>
       )}
 
-      <header className="sticky top-0 z-40 bg-[#FFFFFF]/90 backdrop-blur-md border-b border-[#F3F4F6]/60 px-4 py-4 shadow-md">
-        <div className="max-w-2xl mx-auto flex items-center justify-center relative">
-          <div className="text-center select-none">
-            <h1 className="text-xl font-mono tracking-widest italic font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
-            <p className="text-xs font-bold text-amber-500/80 tracking-[0.2em] uppercase mt-0.5"></p>
-            {diaEscolhido && (
-              <p className="text-base font-black text-orange-600 mt-2 tracking-wider">
-                📅 Entrega agendada para {diaEscolhido.nome}
-              </p>
-            )}
-          </div>
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-[#F3F4F6] px-4 py-4 shadow-md">
+        <div className="max-w-2xl mx-auto text-center">
+          <h1 className="text-xl font-black text-orange-500 uppercase">CARDÁPIO DO DIA</h1>
+          {diaEscolhido && <p className="text-base font-black text-orange-600 mt-2">📅 Entrega: {diaEscolhido.nome}</p>}
         </div>
       </header>
 
       {(etapa === "menu" || etapa === "observacao" || etapa === "checkout") && (
-        <div className="max-w-2xl mx-auto w-full px-0 sm:px-4">
-          <div className="w-full overflow-hidden rounded-b-3xl shadow-lg border-b border-[#F3F4F6]/50 block">
-            <Image
-              src="/banner/banner-topo-v2.png"
-              alt="Tapicuz Café da Manhã"
-              width={800}
-              height={220}
-              priority
-              className="w-full h-auto object-cover"
-            />
-          </div>
+        <div className="max-w-2xl mx-auto px-0 sm:px-4">
+          <Image src="/banner/banner-topo-v2.png" alt="Café da Manhã" width={800} height={220} priority className="w-full h-auto object-cover rounded-b-3xl shadow-lg" />
         </div>
       )}
 
       {etapa === "menu" && (
-        <div className="max-w-2xl mx-auto px-4 mt-6 space-y-4">
-          <div className="bg-orange-100 border-2 border-orange-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-md">
-            <span className="text-2xl mb-1">🔥</span>
-            <div>
-              <h4 className="font-black text-orange-900 uppercase tracking-wider text-base mb-1.5">
-                COMBO ATIVO!
-              </h4>
-              <p className="text-orange-950 font-bold text-sm leading-relaxed">
-                Monte qualquer par de <strong className="text-emerald-700 font-black">Comida + Café</strong>
-                <br />
-                por apenas <strong className="text-emerald-800 font-black">R$ 10,00</strong>
-              </p>
-            </div>
+        <div className="max-w-2xl mx-auto px-4 mt-6 space-y-6">
+          <div className="bg-orange-100 border-2 border-orange-500 rounded-2xl p-4 text-center shadow-md">
+            <span className="text-2xl">🔥</span>
+            <h4 className="font-black text-orange-900 uppercase mt-2">COMBO ATIVO!</h4>
+            <p className="text-orange-950 text-sm mt-1">Comida + Café = <strong>R$ 10,00</strong></p>
           </div>
 
           <div className="grid grid-cols-1 gap-4">
             {Object.keys(PRECOS_PRODUTOS).map((chave) => {
               const produto = DETALHES_PRODUTOS[chave]
               const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
-              const quantidade = itens[chave] || 0
-              const ehPrimeiroItem = chave === "tapiocaMolhada"
-              const estaDisponivel = produtosBanco[chave]?.disponivel ?? true
+              const qtd = itens[chave] || 0
+              const disponivel = produtosBanco[chave]?.disponivel ?? true
 
               return (
-                <div 
-                  key={chave} 
-                  className={`border rounded-3xl p-6 flex flex-col items-center gap-5 transition-all 
-                    ${!estaDisponivel 
-                      ? "bg-zinc-200/60 border-red-400/50 opacity-50 grayscale pointer-events-none" 
-                      : quantidade > 0 
-                        ? "bg-amber-400 border-orange-600 border-4 shadow-[0_0_20px_rgba(249,115,22,0.3)] scale-[1.02]" 
-                        : "bg-amber-100/95 border-amber-200 shadow-sm"
-                    }`}
-                >
-                  {!estaDisponivel && (
-                    <span className="bg-red-500 text-[#27272A] font-black text-xs uppercase px-3 py-1 rounded-full rotate-[-8deg] shadow-lg absolute">
-                      ❌ Indisponível
-                    </span>
-                  )}
-                  <div className="w-full flex justify-center mb-3">
-                    <Image
-                      src={`/produtos/${produto.imagem}`}
-                      alt={produto.nome}
-                      width={112}
-                      height={112}
-                      className="w-28 h-28 object-cover aspect-square rounded-2xl border-2 border-stone-200 shadow-md"
-                      loading={ehPrimeiroItem ? "eager" : "lazy"}
-                      priority={ehPrimeiroItem}
-                    />
-                  </div>
-
-                  <div className="text-center">
-                    <h3 className={`font-black text-xl tracking-wide uppercase ${estaDisponivel ? "text-orange-600" : "text-zinc-500 line-through"}`}>
-                      {produto.nome}
-                    </h3>
-                    <span className={`font-black text-lg block mt-1 ${estaDisponivel ? "text-emerald-600" : "text-[#71717A]"}`}>
-                      R$ {preco.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center bg-stone-200/60 border border-stone-300 rounded-2xl p-1.5 gap-2 w-full max-w-[200px] justify-center">
-                    {quantidade > 0 && (
+                <div key={chave} className={`border rounded-3xl p-6 flex flex-col items-center gap-5 relative transition-all
+                  ${!disponivel ? "bg-zinc-200/60 border-red-400/50 opacity-50 grayscale pointer-events-none" :
+                    qtd > 0 ? "bg-amber-400 border-orange-600 border-4 shadow-lg scale-[1.02]" : "bg-amber-100 border-amber-200"}`}>
+                  {!disponivel && <span className="absolute top-2 right-2 bg-red-500 text-black text-xs px-2 py-1 rounded-full">❌ Indisponível</span>}
+                  <Image src={`/produtos/${produto.imagem}`} alt={produto.nome} width={112} height={112} className="w-28 h-28 rounded-2xl border shadow-md" />
+                  <h3 className="font-black text-xl text-orange-600 uppercase">{produto.nome}</h3>
+                  <span className="font-black text-lg text-emerald-600">R$ {preco.toFixed(2)}</span>
+                  <div className="flex items-center gap-2 bg-stone-200 rounded-2xl p-1.5 w-full max-w-[200px] justify-center">
+                    {qtd > 0 && (
                       <>
-                        <button 
-                          type="button" 
-                          onClick={() => alterarQtd(chave, -1)} 
-                          disabled={!estaDisponivel}
-                          className="w-12 h-12 rounded-xl bg-stone-50 text-stone-600 border border-stone-300 shadow-sm active:scale-90 font-black text-lg transition-all"
-                        >
-                          -
-                        </button>
-                        <span className="font-black text-stone-800 text-xl w-10 text-center">{quantidade}</span>
+                        <button onClick={() => alterarQtd(chave, -1)} className="w-12 h-12 bg-white text-stone-700 rounded-xl font-black text-lg">-</button>
+                        <span className="font-black text-xl w-10 text-center">{qtd}</span>
                       </>
                     )}
-                    <button 
-                      type="button" 
-                      onClick={() => alterarQtd(chave, 1)} 
-                      disabled={!estaDisponivel}
-                      className={`h-12 rounded-xl font-black transition-all active:scale-95 flex items-center justify-center ${quantidade > 0 ? "w-12 bg-orange-500 text-[#27272A] text-lg" : "w-full px-6 bg-stone-50 text-stone-700 border border-stone-300 text-sm uppercase tracking-widest"}`}
-                    >
-                      {quantidade > 0 ? "+" : "Adicionar"}
+                    <button onClick={() => alterarQtd(chave, 1)} className={`h-12 rounded-xl font-black ${qtd > 0 ? "w-12 bg-orange-500 text-black text-lg" : "w-full bg-white text-sm uppercase px-4"}`}>
+                      {qtd > 0 ? "+" : "Adicionar"}
                     </button>
                   </div>
                 </div>
@@ -702,536 +436,186 @@ if (!validarTelefone(telefone)) {
 
       {etapa === "observacao" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
-          <div className="flex items-center gap-2 border-b border-[#F3F4F6] pb-3">
-            <button type="button" onClick={() => setEtapa("menu")} className="text-zinc-950 hover:text-black font-bold text-xs bg-[#FFFFFF] border border-[#F3F4F6] px-3 py-1.5 rounded-xl shadow-sm">← Voltar</button>
-            <h2 className="text-xs font-black uppercase text-orange-500 tracking-wider ml-auto">Preferências</h2>
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("menu")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Voltar</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Preferências</h2>
           </div>
-
-          <div className="bg-[#FFFFFF] border border-[#F3F4F6]/80 p-6 rounded-3xl space-y-5 shadow-md text-center">
-            <h2 className="text-xl font-black text-black uppercase tracking-wider block w-full text-center py-2">
-              ALGUMA OBSERVAÇÃO NO PEDIDO ?
-            </h2>
-
-            <textarea
-              value={observacao}
-              onChange={(e) => setObservacao(e.target.value)}
-              placeholder="Digite aqui como você deseja o seu pedido..."
-              className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-2xl p-4 text-sm text-center text-black outline-none transition-all resize-none font-medium placeholder:text-zinc-700 focus:placeholder:opacity-0"
-              rows={4}
-            />
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setEtapa("checkout")}
-                className="w-full py-4 bg-orange-500 text-black text-sm font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95"
-              >
-                Continuar →
-              </button>
-            </div>
+          <div className="bg-white border p-6 rounded-3xl shadow-md">
+            <h2 className="text-xl font-black text-center mb-4">ALGUMA OBSERVAÇÃO?</h2>
+            <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex: sem açúcar, bem quente..." rows={4} className="w-full bg-[#FFFAF5] border rounded-2xl p-4 text-sm outline-none" />
+            <button onClick={() => setEtapa("checkout")} className="w-full py-3 mt-4 bg-orange-500 text-black font-black rounded-xl">Continuar →</button>
           </div>
         </div>
       )}
 
       {etapa === "checkout" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
-          <div className="flex items-center gap-2 border-b border-[#F3F4F6] pb-3">
-            <button type="button" onClick={() => setEtapa("observacao")} className="text-zinc-950 hover:text-black font-bold text-xs bg-[#FFFFFF] border border-[#F3F4F6] px-3 py-1.5 rounded-xl shadow-sm">← Voltar</button>
-            <h2 className="text-xs font-black uppercase text-orange-500 tracking-wider ml-auto">Informações de Entrega</h2>
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("observacao")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Voltar</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Dados de Entrega</h2>
           </div>
-               
-               {/* 📌 MENSAGEM AVISO DADOS - FONTE MAIOR */}
-{mostrarAvisoDados && (
-  <div className="bg-emerald-50 border-2 border-emerald-500 text-emerald-800 p-5 rounded-2xl font-bold text-center mb-5 shadow-md">
-    <p className="text-lg leading-relaxed">
-      ⚠️ Você só vai precisar colocar os dados apenas uma vez! Nas próximas vezes, tudo estará gravado automaticamente.
-    </p>
-    <button
-      type="button"
-      onClick={() => setMostrarAvisoDados(false)}
-      className="block mx-auto mt-4 bg-emerald-600 text-white px-6 py-2.5 rounded-lg font-black text-base uppercase tracking-wider"
-    >
-      OK
-    </button>
-  </div>
-)}
-          <form onSubmit={irParaConferencia} className="space-y-3 text-[11px] relative" noValidate>
+
+          {mostrarAvisoDados && (
+            <div className="bg-emerald-50 border-2 border-emerald-500 p-5 rounded-2xl text-center">
+              <p className="text-lg font-bold">⚠️ Você só preenche uma vez! Os dados ficam salvos.</p>
+              <button onClick={() => setMostrarAvisoDados(false)} className="mt-3 bg-emerald-600 text-white px-6 py-2 rounded-lg">OK</button>
+            </div>
+          )}
+
+          <form onSubmit={irParaConferencia} className="space-y-4">
             {erroValidacao && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-                <div className="bg-red-50 border-4 border-red-600 text-red-700 p-5 rounded-2xl font-black text-lg uppercase tracking-wider text-center shadow-2xl animate-pulse max-w-xs w-full">
-                  ⚠️ {erroValidacao}
-                  <button 
-                    type="button"
-                    onClick={() => setErroValidacao(null)}
-                    className="block mx-auto mt-4 bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
-                  >
-                    ENTENDI
-                  </button>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                <div className="bg-red-50 border-4 border-red-600 p-5 rounded-2xl text-center max-w-xs w-full">
+                  <p className="font-black text-lg">⚠️ {erroValidacao}</p>
+                  <button onClick={() => setErroValidacao(null)} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg">Entendi</button>
                 </div>
               </div>
             )}
-   
 
+            <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
+              <div id="campo-nome">
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Seu Nome *</label>
+                <input type="text" value={nome} onChange={(e) => setNome(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+              </div>
 
-            <div className="bg-[#FFFFFF] border border-[#F3F4F6]/80 p-4 rounded-2xl space-y-3 shadow-md">
-  {/* NOME */}
-  <div id="campo-nome">
-    <label className="text-xs font-black text-orange-500 uppercase block mb-1">Seu Nome *</label>
-    <input 
-      type="text" 
-      placeholder="EX: MARIA SOUZA" 
-      value={nome} 
-      onChange={(e) => { setNome(e.target.value.toUpperCase()); setErroValidacao(null); }} 
-      className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-xl p-3.5 text-sm text-black font-black uppercase outline-none transition-all" 
-    />
-  </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div id="campo-endereco" className="col-span-2">
+                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Endereço *</label>
+                  <input type="text" value={endereco} onChange={(e) => setEndereco(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+                </div>
+                <div id="campo-numero">
+                  <label className="text-xs font-black text-orange-500 uppercase block mb-1">Número *</label>
+                  <input type="text" inputMode="numeric" value={numeroCasa} onChange={(e) => setNumeroCasa(e.target.value.replace(/\D/g, ""))} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-center font-black" />
+                </div>
+              </div>
 
-  {/* ENDEREÇO + NÚMERO */}
-  <div className="grid grid-cols-3 gap-2">
-    <div id="campo-endereco" className="col-span-2">
-      <label className="text-xs font-black text-orange-500 uppercase block mb-1">Endereço de Entrega *</label>
-      <input 
-        type="text" 
-        placeholder="EX: RUA DAS FLORES" 
-        value={endereco} 
-        onChange={(e) => { setEndereco(e.target.value.toUpperCase()); setErroValidacao(null); }} 
-        className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-xl p-3.5 text-sm text-black font-black uppercase outline-none transition-all" 
-      />
-    </div>
-    <div id="campo-numero">
-      <label className="text-xs font-black text-orange-500 uppercase block mb-1">Número *</label>
-      <input 
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        placeholder="123" 
-        value={numeroCasa} 
-        onChange={(e) => { setNumeroCasa(e.target.value.replace(/\D/g, '')); setErroValidacao(null); }} 
-        className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-xl p-3.5 text-sm font-black text-center text-black outline-none transition-all" 
-      />
-    </div>
-  </div>
+              <div>
+                <label className="text-xs font-black text-orange-500 uppercase block mb-1">Referência</label>
+                <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value.toUpperCase())} className="w-full bg-[#FFFAF5] border rounded-xl p-3.5 text-sm font-black uppercase" />
+              </div>
 
-  {/* PONTO DE REFERÊNCIA */}
-  <div>
-    <label className="text-xs font-black text-orange-500 uppercase block mb-1">Ponto de Referência (Opcional)</label>
-    <input 
-      type="text" 
-      placeholder="EX: PRÓXIMO AO MERCADO" 
-      value={referencia} 
-      onChange={(e) => setReferencia(e.target.value.toUpperCase())} 
-      className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-xl p-3.5 text-sm text-black font-black uppercase outline-none transition-all" 
-    />
-  </div>
+              <div id="campo-telefone">
+                <label className="font-black text-lg uppercase text-orange-600 block text-center mb-2">WhatsApp</label>
+                <input type="tel" maxLength={11} value={telefone} onChange={(e) => { const num = e.target.value.replace(/\D/g, "").slice(0,11); setTelefone(num); }} placeholder="919XXXXXXX" className={`w-full p-4 rounded-xl border-2 text-center font-black ${telefone && !validarTelefone(telefone) ? "border-red-500 text-red-700" : "border-orange-400"}`} />
+                {telefone && !validarTelefone(telefone) && <p className="text-red-600 text-sm text-center mt-2">Digite começando com 919</p>}
+              </div>
 
-{/* CAMPO WHATSAPP - COM VALIDAÇÃO 919 ✅ */}
-<div className="space-y-3 flex flex-col items-center pt-2">
-  <label 
-    className="font-black text-lg uppercase tracking-wider text-orange-600"
-    style={{ fontFamily: 'Arial, sans-serif' }}
-  >
-    WhatsApp
-  </label>
-  <input
-    id="campo-telefone"
-    type="tel"
-  value={telefone}
-  maxLength={11}
-  onChange={(e) => {
-    const numero = e.target.value.replace(/\D/g, "")
-    setTelefone(numero.slice(0, 11))
-    setErroValidacao(null)
-    }}
-    placeholder="919XXXX-XXXX"
-    className={`w-full max-w-md p-4 rounded-xl border-2 bg-[#FFFAF5] text-base text-black font-black placeholder:text-orange-400 focus:outline-none focus:ring-2 transition-all shadow-sm text-center
-      ${telefone && !validarTelefone(telefone) 
-        ? "border-red-500 focus:ring-red-500 text-red-700" 
-        : "border-orange-400 focus:ring-orange-500 focus:border-orange-500"
-      }`}
-    style={{ fontFamily: 'Arial, sans-serif' }}
-  />
-  {/* ✅ ALERTA VISÍVEL SE ESTIVER ERRADO */}
-  {telefone && !validarTelefone(telefone) && (
-    <p className="text-red-600 font-black text-sm uppercase text-center px-2 py-1 bg-red-50 rounded-lg border border-red-300 shadow-sm animate-pulse">
-      "⚠️ Digite um WhatsApp válido com 11 números. Exemplo: 91982116522"
-    </p>
-  )}
-  <p className="text-[10px] text-orange-500 font-bold uppercase">Digite começando com 919 + o restante</p>
-</div>
+              <div id="campo-horario" className="pt-4 border-t space-y-4">
+                <label className="text-sm font-black text-orange-600 uppercase text-center block">Dia da Entrega *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {diasPermitidosParaEntrega().length === 0 ? <p className="text-red-600 col-span-3 text-center">Nenhum dia disponível</p> :
+                    diasPermitidosParaEntrega().map(dia => (
+                      <button key={dia.valor} type="button" onClick={() => { setDiaEscolhido(dia); setHorario(""); }} className={`py-3 rounded-lg font-bold ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black" : "bg-white border"}`}>
+                        {dia.nome}
+                      </button>
+                    ))
+                  }
+                </div>
 
-  {/* DIA + HORÁRIO ✅ MENSAGENS SOMEM AO SELECIONAR */}
-  <div id="campo-horario" className="text-center pt-3 border-t border-[#F3F4F6]/50 rounded-xl p-2 space-y-4">
-    <div>
-      {!diaEscolhido && (
-        <label className="text-sm font-black text-orange-600 uppercase block mb-2 animate-pulse drop-shadow">
-          ⚠️ PRIMEIRO ESCOLHA O DIA DA ENTREGA *
-        </label>
+                {diaEscolhido && (
+                  <div>
+                    <label className="text-sm font-black text-orange-600 uppercase text-center block mt-4">Horário *</label>
+                    <button type="button" onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)} className={`w-full py-4 border-4 rounded-2xl font-black text-xl ${horario ? "border-emerald-500 text-emerald-600" : "border-orange-500 text-orange-600 animate-pulse"}`}>
+                      {horario || "Toque para escolher horário"}
+                    </button>
+                    {mostrarListaHorarios && (
+                      <div className="mt-2 grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-3 bg-[#FFFAF5] border-2 border-orange-500 rounded-xl">
+                        {horariosPermitidosParaDia().length === 0 ? <p className="text-red-600 col-span-4 text-center">Sem horários</p> :
+                          horariosPermitidosParaDia().map((hora: string) => (
+                            <button key={hora} onClick={() => { setHorario(hora); setMostrarListaHorarios(false); }} className={`py-3 rounded-lg font-bold ${horario === hora ? "bg-orange-500 text-black" : "bg-white border"}`}>
+                              {hora}
+                            </button>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t">
+                <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Forma de Pagamento</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setPagamento("Pix")} className={`p-4 rounded-xl font-black uppercase ${pagamento === "Pix" ? "bg-emerald-600 text-white" : "bg-[#FFFAF5] border"}`}>📲 PIX</button>
+                  <button type="button" onClick={() => setPagamento("Dinheiro")} className={`p-4 rounded-xl font-black uppercase ${pagamento === "Dinheiro" ? "bg-orange-500 text-white" : "bg-[#FFFAF5] border"}`}>💵 DINHEIRO</button>
+                </div>
+
+                {pagamento === "Pix" && <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 mt-3 text-center"><p className="font-black text-sm">Total: R$ {valorTotalFinal.toFixed(2)}</p></div>}
+                {pagamento === "Dinheiro" && (
+                  <div className="mt-3 space-y-3">
+                    <label className="text-sm font-black text-orange-600 uppercase block text-center">Precisa de troco?</label>
+                    <input type="text" inputMode="numeric" value={trocoPara} onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ""))} placeholder="Valor da nota" className="w-full p-3 border rounded-xl text-center font-black" />
+                    {trocoCalculado > 0 && <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 text-center"><p>Troco: <strong>R$ {trocoCalculado.toFixed(2)}</strong></p></div>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button type="submit" className="w-full py-4 bg-orange-500 text-black font-black uppercase rounded-xl shadow-md">Conferir Pedido →</button>
+          </form>
+        </div>
       )}
-      <div className="grid grid-cols-3 gap-2">
-        {diasPermitidosParaEntrega().length === 0 ? (
-          <p className="text-red-600 font-black col-span-3">Nenhum dia de entrega cadastrado no momento</p>
-        ) : (
-          diasPermitidosParaEntrega().map(dia => (
-            <button
-              key={dia.valor}
-              type="button"
-              onClick={() => { setDiaEscolhido(dia); setHorario(""); setErroValidacao(null) }}
-              className={`py-3 px-2 rounded-lg font-bold text-xs uppercase transition-all
-                ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black shadow-md border-2 border-orange-400" : "bg-white text-black border border-[#F3F4F6]"}`}
-            >
-              {dia.nome}
+
+      {etapa === "confirmacao" && (
+        <div className="max-w-md mx-auto px-3 mt-4 space-y-4">
+          <div className="flex items-center gap-2 border-b pb-3">
+            <button onClick={() => setEtapa("checkout")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Alterar Dados</button>
+            <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Revisão do Pedido</h2>
+          </div>
+
+          <div className="bg-white border-2 border-orange-500 rounded-3xl p-5 shadow-xl space-y-5">
+            <div className="text-center space-y-3">
+              <p><strong>Cliente:</strong> <span className="text-orange-600 font-black">{nome}</span></p>
+              <p><strong>Endereço:</strong> <span className="text-orange-600 font-black">{endereco}, Nº {numeroCasa}</span></p>
+              {referencia && <p className="text-sm text-emerald-600">Ref: {referencia}</p>}
+              <p><strong>Entrega:</strong> {diaEscolhido?.nome} às {horario}</p>
+              <p><strong>Pagamento:</strong> {pagamento}</p>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-black uppercase text-center mb-3">Itens do Pedido</h4>
+              {Object.entries(itens).map(([chave, qtd]) => {
+                if (qtd === 0) return null
+                const prod = DETALHES_PRODUTOS[chave]
+                const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+                return (
+                  <div key={chave} className="flex justify-between items-center py-2 border-b">
+                    <span>{prod.icone} {qtd}x {prod.nome}</span>
+                    <span className="font-black">R$ {(preco * qtd).toFixed(2)}</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {descuentoCombo > 0 && (
+              <div className="bg-green-100 border border-green-500 p-3 rounded-xl text-center">
+                🎉 Desconto do Combo: <strong>R$ {descuentoCombo.toFixed(2)}</strong>
+              </div>
+            )}
+
+            <div className="bg-amber-50 border border-amber-400 p-4 rounded-xl text-center">
+              <p className="text-sm">Valor Total</p>
+              <p className="text-2xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
+            </div>
+
+            <button onClick={processarEnvioPedido} disabled={enviandoPedido} className="w-full py-4 bg-emerald-600 text-black font-black uppercase rounded-xl mt-4">
+              {enviandoPedido ? "Processando..." : "✅ CONFIRMAR PEDIDO"}
             </button>
-          ))
-        )}
-      </div>
-    </div>
-
-    {diaEscolhido && (
-      <div>
-        {!horario && (
-          <label className="text-sm font-black text-orange-600 uppercase block mb-2 animate-pulse drop-shadow">
-            ⚠️ AGORA ESCOLHA O HORÁRIO ABAIXO *
-          </label>
-        )}
-        
-        <button
-          type="button"
-          onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)}
-          className={`w-full bg-[#FFFAF5] rounded-2xl py-4 px-4 flex items-center justify-center relative active:scale-95 transition-all border-4 ${!horario ? "border-orange-500 animate-pulse shadow-[0_0_15px_rgba(249,115,22,0.4)]" : "border-emerald-500"}`}
-        >
-          <span className={`${!horario ? "text-orange-600" : "text-emerald-600"} font-black text-2xl tracking-wide`}>
-            {!horario ? "TOQUE AQUI PARA ESCOLHER A HORA" : horario}
-          </span>
-          <span className="text-orange-600 absolute right-4 text-xs font-bold">{mostrarListaHorarios ? "▲" : "▼"}</span>
-        </button>
-
-        {mostrarListaHorarios && (
-          <div className="mt-2 grid grid-cols-4 gap-3 max-h-44 overflow-y-auto p-4 bg-[#FFFAF5] border-2 border-orange-500 rounded-xl shadow-inner">
-            {horariosPermitidosParaDia().length === 0 ? (
-              <p className="text-red-600 font-black col-span-4">Nenhum horário cadastrado para este dia</p>
-            ) : (
-              horariosPermitidosParaDia().map((hora: string) => (
-                <button
-                  key={hora}
-                  type="button"
-                  onClick={() => { setHorario(hora); setErroValidacao(null); setMostrarListaHorarios(false) }}
-                  className={`py-5 px-2 text-center rounded-lg font-bold text-base transition-all ${horario === hora ? "bg-orange-500 text-black font-black shadow-lg scale-[1.05]" : "bg-white text-black border border-[#F3F4F6]"}`}
-                >
-                  {hora}
-                </button>
-              ))
-            )}
           </div>
-        )}
-      </div>
-    )}
-
-    {diaEscolhido && horario && (
-      <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-2 shadow-inner">
-        <p className="text-emerald-700 font-black text-sm uppercase tracking-wider">
-          ✅ ENTREGA: {diaEscolhido.nome} às {horario}
-        </p>
-      </div>
-    )}
-  </div>
-
-  {/* FORMA DE PAGAMENTO */}
-  <div className="bg-[#FFFFFF] border border-[#F3F4F6]/80 p-4 rounded-2xl space-y-3 shadow-md">
-    <div>
-      <label className="text-sm font-black text-orange-600 uppercase block mb-3 text-center tracking-wider">
-        FORMA DE PAGAMENTO
-      </label>
-      <div className="grid grid-cols-2 gap-2">
-        <button 
-          type="button" 
-          onClick={() => setPagamento("Pix")}
-          className={`p-4 rounded-xl border-2 text-base font-black text-center uppercase tracking-wider transition-all transform active:scale-95
-            ${pagamento === "Pix" 
-              ? "bg-emerald-600 border-emerald-700 text-white shadow-lg scale-[1.03]" 
-              : "bg-[#FFFAF5] border-[#F3F4F6] text-black hover:bg-orange-50/30"}`}
-        >
-          📲 PIX
-        </button>
-        <button 
-          type="button" 
-          onClick={() => setPagamento("Dinheiro")}
-          className={`p-4 rounded-xl border-2 text-base font-black text-center uppercase tracking-wider transition-all transform active:scale-95
-            ${pagamento === "Dinheiro" 
-              ? "bg-orange-500 border-orange-700 text-white shadow-lg scale-[1.03]" 
-              : "bg-[#FFFAF5] border-[#F3F4F6] text-black hover:bg-orange-50/30"}`}
-        >
-          💵 DINHEIRO
-        </button>
-      </div>
-    </div>
-
-    {/* PIX */}
-    {pagamento === "Pix" && (
-      <div className="bg-emerald-50 border-2 border-emerald-500 rounded-xl p-4 text-center mt-2 shadow-inner">
-        <p className="text-emerald-700 font-black text-sm uppercase tracking-wider">Total a pagar no PIX</p>
-        <p className="text-3xl font-black text-emerald-600 mt-1 tracking-tight">R$ {valorTotalFinal.toFixed(2)}</p>
-        <p className="text-[11px] text-black mt-2 uppercase font-semibold">O código copia-e-cola será gerado ao confirmar o pedido.</p>
-      </div>
-    )}
-
-  {/* DINHEIRO + TROCO - TAMANHO IGUAL, VAZIO E MENSAGEM */}
-{pagamento === "Dinheiro" && (
-  <div className="space-y-4 pt-3">
-    <label className="text-base font-black text-orange-600 uppercase block mb-3 text-center tracking-wider">
-      Precisa de Troco Para Quanto?
-    </label>
-    <input 
-      type="text"
-      inputMode="numeric"
-      pattern="[0-9]*"
-      placeholder="DIGITE O VALOR SE PRECISAR"
-      value={trocoPara} 
-      onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ''))} 
-      className="w-full bg-[#FFFAF5] border border-[#F3F4F6] focus:border-orange-500 rounded-xl p-4 text-base text-center text-black font-bold outline-none transition-all" 
-    />
-
-    {/* ✅ MENSAGEM SE NÃO PRECISAR DE TROCO */}
-    {!trocoPara && (
-      <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-3 shadow-inner mt-2">
-        <p className="text-base text-center text-orange-700 font-black uppercase tracking-wider">
-          ✅ Não precisa de troco
-        </p>
-      </div>
-    )}
-
-    {trocoCalculado > 0 && (
-      <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-4 shadow-inner mt-2">
-        <p className="text-base text-center text-emerald-700 font-black uppercase tracking-wider">Seu troco será de:</p>
-        <p className="text-4xl font-black text-emerald-600 text-center mt-1 tracking-tight animate-pulse">
-          R$ {trocoCalculado.toFixed(2)}
-        </p>
-      </div>
-    )}
-  </div>
-)}
-    
-  </div>
-</div>
-
-{/* BOTÃO FINAL */}
-<button 
-  type="submit" 
-  className="w-full py-4 bg-orange-500 text-black text-base font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95 text-center block mt-4"
->
-  Conferir Pedido →
-</button>
-
-</form>
         </div>
       )}
-{etapa === "confirmacao" && (
-  <div 
-    className="max-w-md mx-auto px-3 mt-4 space-y-4 text-base uppercase"
-    ref={(el) => {
-      // ✅ JÁ APARECE TUDO CENTRALIZADO E VISÍVEL DE CARA
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-    }}
-  >
-    <div className="flex items-center gap-2 border-b border-[#F3F4F6] pb-2">
-      <button type="button" onClick={() => setEtapa("checkout")} className="text-zinc-950 hover:text-black font-black text-xs bg-[#FFFFFF] border border-[#F3F4F6] px-2.5 py-1.5 rounded-xl shadow-sm">← ALTERAR DADOS</button>
-      <h2 className="text-xs font-black uppercase text-orange-500 tracking-wider ml-auto">CONFERIR PEDIDO</h2>
-    </div>
 
-    <div className="bg-[#FFFFFF] border-2 border-orange-500/60 rounded-[28px] p-4 space-y-4 shadow-2xl text-center">
-      <div className="space-y-3 text-black border-b-2 border-zinc-900 pb-4 text-sm leading-relaxed flex flex-col items-center uppercase">
-        {/* ✅ CLIENTE: AUMENTADO, NEGRITO E COR NÍTIDA */}
-        <p>
-          <strong className="text-zinc-800 block text-[13px] uppercase tracking-wider font-black">CLIENTE:</strong> 
-          <span className="text-orange-600 font-black text-lg">{nome.toUpperCase()}</span>
-        </p>
-        
-        <div className="w-full text-center">
-          {/* ✅ ENDEREÇO: AUMENTADO, NEGRITO E COR NÍTIDA */}
-          <strong className="text-zinc-800 block text-[13px] uppercase tracking-wider font-black">ENDEREÇO DE ENTREGA:</strong> 
-          <span className="text-orange-600 font-black text-base">
-            {`${endereco.toUpperCase().trim()}, Nº ${numeroCasa.toUpperCase().trim()}`}
-          </span>
-          {referencia.trim() && (
-            <span className="text-emerald-600 font-black block text-sm mt-2 lowercase first-letter:uppercase bg-[#FFFAF5] px-3 py-2 rounded-lg border border-orange-400 max-w-xs mx-auto shadow-sm">
-              📍 Ref: {referencia.toUpperCase().trim()}
-            </span>
-          )}
-        </div>
-
-        {observacao.trim() && (
-          <div className="w-full text-center bg-[#FFFAF5] px-3 py-2 rounded-xl border border-[#F3F4F6] max-w-sm mx-auto mt-2">
-            <strong className="text-orange-500 block text-[11px] font-black uppercase tracking-wider mb-1">📝 Observação do Pedido:</strong>
-            <span className="text-black font-medium normal-case block text-[11px] px-1 leading-relaxed">
-              "{observacao.trim()}"
-            </span>
-          </div>
-        )}
-        
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-900 w-full">
-          <div>
-            <strong className="text-zinc-800 block text-[13px] uppercase tracking-wider font-black">HORÁRIO MARCADO:</strong>
-            <span className="text-orange-600 font-black font-mono text-lg block mt-1">{diaEscolhido?.nome} — {horario}</span>
-          </div>
-          <div>
-            <strong className="text-zinc-800 block text-[13px] uppercase tracking-wider font-black">FORMA DE PAGAMENTO:</strong>
-            <span className="text-orange-600 font-black uppercase text-base block mt-1">{pagamento.toUpperCase()}</span>
-          </div>
-        </div>
-        
-        
-        {pagamento === "Dinheiro" && (
-          <div className="w-full mt-2 bg-[#FFFAF5] border-2 border-amber-500/50 rounded-xl p-3 space-y-1.5 text-center shadow-inner">
+      {totalItensSelecionados > 0 && (etapa === "menu" || etapa === "checkout") && (
+        <div className="fixed bottom-4 left-3 right-3 z-40 max-w-xl mx-auto">
+          <div className="bg-white border p-4 rounded-xl shadow-lg flex justify-between items-center">
             <div>
-              <span className="text-black text-[10px] font-black block tracking-widest">VAI PAGAR COM NOTA DE:</span>
-              <span className="text-amber-600 font-mono font-black text-xl">
-                R$ {trocoParaNum > 0 ? trocoParaNum.toFixed(2) : valorTotalFinal.toFixed(2)}
-              </span>
+              <span className="text-sm font-black text-orange-600">{totalItensSelecionados} {totalItensSelecionados === 1 ? "item" : "itens"}</span>
+              <p className="text-xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
             </div>
-            {trocoCalculado > 0 && (
-              <div className="border-t border-[#F3F4F6]/80 pt-1.5">
-                <span className="text-black text-[10px] font-black block tracking-widest">VALOR DO SEU TROCO:</span>
-                <span className="text-emerald-600 font-mono font-black text-2xl block mt-0.5 animate-pulse">
-                  R$ {trocoCalculado.toFixed(2)}
-                </span>
-              </div>
-            )}
-            {!trocoPara && (
-              <div className="border-t border-[#F3F4F6]/80 pt-1.5">
-                <span className="text-orange-700 font-black text-sm uppercase tracking-wider">✅ Não precisa de troco</span>
-              </div>
-            )}
+            {etapa === "menu" && <button onClick={() => setEtapa("observacao")} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
           </div>
-        )}
-
-        {pagamento === "Pix" && (
-          <div className="w-full mt-2 bg-[#F0F9FF] border-2 border-blue-400/50 rounded-xl p-3 space-y-2 text-center shadow-inner">
-            <span className="text-black text-[10px] font-black block tracking-widest">CHAVE PIX / CÓDIGO:</span>
-            <span className="text-blue-600 font-mono font-black text-xs break-all leading-tight">
-              {codigoPix}
-            </span>
-            <div className="pt-1">
-              <span className="text-black text-[10px] font-black block tracking-widest">VALOR A PAGAR:</span>
-              <span className="text-emerald-600 font-mono font-black text-2xl">
-                R$ {valorTotalFinal.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-     
-      <div className="space-y-1.5 flex flex-col items-center uppercase">
-        <span className="text-[12px] uppercase font-black text-orange-900 block tracking-wider mb-2">
-          ITENS ESCOLHIDOS:
-        </span>
-        {Object.entries(itens).map(([chave, qtd]) => {
-          if (qtd === 0) return null
-          const produto = DETALHES_PRODUTOS[chave]
-          const precoUnidade = PRECOS_PRODUTOS[chave]
-          return (
-            <div 
-              key={chave}
-              className="flex justify-between items-center text-orange-950 text-[13px] py-2 w-full max-w-sm border-b border-orange-200/60 last:border-0 px-1"
-            >
-              <div className="flex items-center gap-2 text-left">
-                <span className="text-base select-none">{produto.icone}</span>
-                <span className="text-orange-600 font-black text-sm">{qtd}X</span>
-                <span className="font-black">{produto.nome.toUpperCase()}</span>
-              </div>
-              
-              <div className="text-right font-black text-emerald-800 font-mono min-w-[70px] text-[14px]">
-                R$ {(precoUnidade * qtd).toFixed(2)}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="border-t-2 border-zinc-900 pt-3 space-y-1.5 uppercase">
-        {descuentoCombo > 0 && (
-          <div className="bg-gradient-to-r from-green-600 to-emerald-500 text-white font-black text-base uppercase px-4 py-3 rounded-xl shadow-lg border-2 border-green-300 animate-pulse scale-[1.02]">
-            🎉 COMBO ATIVO 🎉
-            <span className="block text-lg mt-1 font-extrabold">ECONOMIZEU: R$ {descuentoCombo.toFixed(2)}</span>
-          </div>
-        )}
-
-        <div className="flex flex-col items-center bg-[#FFFAF5]/60 border border-[#F3F4F6] rounded-xl p-3 mt-1.5 text-center">
-          <span className="text-[10px] font-black text-black uppercase tracking-widest">VALOR TOTAL DO PEDIDO</span>
-          <span className="text-emerald-600 text-2xl font-black font-mono tracking-tight mt-0.5">R$ {valorTotalFinal.toFixed(2)}</span>
         </div>
-      </div>
-
-      <p className="bg-red-50 border-2 border-red-500 text-red-700 p-3 rounded-2xl font-black text-sm uppercase shadow-inner text-center">
-        NÃO ESQUEÇA DE ENVIAR O COMPROVANTE. OBRIGADO!
-      </p>
-
-    </div>
-
-    <button 
-      type="button"
-      disabled={enviandoPedido}
-      onClick={processarEnvioPedido}
-      className={`w-full py-3.5 px-4 disabled:opacity-40 text-zinc-950 text-base font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95
-        ${statusPix === "carregando" ? "bg-[#FFF7ED] animate-pulse text-black" : "bg-emerald-600 hover:bg-emerald-500"}
-      `}
-    >
-      {statusPix === "carregando" && "⌛ GERANDO SEU PIX..."}
-      {statusPix === "copiado" && "📋 MOSTRANDO PIX COPIADO..."}
-      {statusPix === "normal" && (enviandoPedido ? "ENVIANDO..." : "🚀 CONFIRMAR")}
-      {statusPix === "erro" && "❌ TENTAR NOVAMENTE"}
-    </button>
-  </div>
-)}
-
-{/* BARRA INFERIOR DE NAVEGAÇÃO COMPRAS - TEXTO AUMENTADO */}
-{totalItensSelecionados > 0 && (etapa === "menu" || etapa === "checkout") && (
-  <div className="fixed bottom-4 left-3 right-3 z-40 max-w-xl mx-auto">
-    <div className="bg-[#FFFFFF] border border-[#F3F4F6] shadow-2xl rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-center">
-      <div className="flex flex-col items-center justify-center w-full sm:w-auto">
-        <span className="bg-orange-500/10 text-orange-600 font-black text-base px-2 py-1 rounded-md uppercase tracking-wider block mx-auto">
-          {totalItensSelecionados} {totalItensSelecionados === 1 ? "ITEM SELECIONADO" : "ITENS SELECIONADOS"}
-        </span>
-        <div className="flex items-baseline justify-center gap-1 mt-1 w-full">
-          <span className="text-xl font-black text-emerald-600 tracking-tight text-center block w-full">
-            Total: R$ {valorTotalFinal.toFixed(2)}
-          </span>
-        </div>
-      </div>
-
-      {etapa === "menu" && (
-        <button 
-          type="button" 
-          onClick={() => setEtapa("observacao")} 
-          className="py-3 px-6 w-full sm:w-auto bg-orange-500 text-black text-base font-black uppercase tracking-widest rounded-lg transition-all shadow-md active:scale-95"
-        >
-          AVANÇAR →
-        </button>
       )}
-    </div>
-  </div>
-)}
-
-
-
-{/* AVISO DO COMBO NO MENU */}
-{etapa === "menu" && (
-  <div className="max-w-2xl mx-auto px-4 mt-6 space-y-4">
-    <div className="bg-orange-100 border-2 border-orange-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-md">
-      <span className="text-2xl mb-1">🔥</span>
-      <div>
-        <h4 className="font-black text-orange-900 uppercase tracking-wider text-base mb-1.5">
-          COMBO ATIVO!
-        </h4>
-        <p className="text-orange-950 font-bold text-sm leading-relaxed">
-          Monte qualquer par de <strong className="text-emerald-700 font-black">Comida + Café</strong>
-          <br />
-          por apenas <strong className="text-emerald-800 font-black">R$ 10,00</strong>
-        </p>
-      </div>
-    </div>
-  </div>
-)}
-
-</main>
-      )
+    </main>
+  )
 }
