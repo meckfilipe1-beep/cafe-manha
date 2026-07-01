@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_NOTIFICAR_API_URL || "http://localhost:3000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_NOTIFICAR_API_URL || "https://cafe-manha-server.onrender.com"
 
 export async function notificarPedido(dados: {
   nome: string
