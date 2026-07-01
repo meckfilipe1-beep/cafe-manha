@@ -369,6 +369,18 @@ export default function AdminPainel() {
   const somaHistoricoDespesas = historicoCaixas.reduce((acc, c) => acc + (c.despesas || 0), 0);
   const somaHistoricoLiquido = historicoCaixas.reduce((acc, c) => acc + (c.saldoLiquido || 0), 0);
 
+  const fiadosAgrupados = fiados.filter(f => f.totalDevido > 0).reduce((acc: any[], f) => {
+    const existente = acc.find(a => a.nome?.trim()?.toUpperCase() === f.nome?.trim()?.toUpperCase());
+    if (existente) {
+      existente.totalDevido = (existente.totalDevido || 0) + (f.totalDevido || 0);
+      existente.pedidos = [...(existente.pedidos || []), ...(f.pedidos || [])];
+      existente.pagamentos = [...(existente.pagamentos || []), ...(f.pagamentos || [])];
+    } else {
+      acc.push({ ...f, id: f.id || f.nome });
+    }
+    return acc;
+  }, []);
+
   const dispararFluxoConclusaoAvulso = (e: React.FormEvent) => {
     e.preventDefault();
   };
@@ -1038,7 +1050,7 @@ export default function AdminPainel() {
   className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "fiados" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
 >
   <span className="text-lg">📒</span>
-  <span>FIADOS ({fiados.filter(f => f.totalDevido > 0).length})</span>
+          <span>FIADOS ({fiadosAgrupados.length})</span>
 </button>
 
 </div>
@@ -1928,81 +1940,41 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
             {/* ✅ ENDEREÇO EM NEGRITO */}
             <p className="text-[#71717A] text-sm mb-3 font-bold">{pedido.endereco}</p>
 
-            <div className="flex justify-between items-center mt-4">
-              {/* ✅ VALOR EM NEGRITO */}
-              <p className="text-lg font-black text-emerald-400 font-bold">R$ {pedido.valorTotal.toFixed(2)}</p>
-              <div className="flex gap-2">
-                {/* ✅ BOTÃO COBRAR CORRIGIDO: SEM ALERTA, FUNCIONA DOS DOIS JEITOS */}
-                <button
-                  onClick={() => {
-                    if (pedido.telefone) {
-                      const numeroLimpo = pedido.telefone.replace(/\D/g, "");
-                      const mensagemCobranca = `Olá ${pedido.nome}.
-Seu pedido da Tapicuz está pendente de pagamento.
-Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
-Por favor, efetue o pagamento quando puder.
-Agradecemos a preferência.`;
-                      const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagemCobranca)}`;
-                      if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-};;
-                    } else {
-                      const mensagemCobranca = `Olá ${pedido.nome}.
-Seu pedido da Tapicuz está pendente de pagamento.
-Valor total: R$ ${pedido.valorTotal.toFixed(2).replace('.', ',')}.
-Por favor, efetue o pagamento quando puder.
-Agradecemos a preferência.`;
-                      const url = `https://wa.me/?text=${encodeURIComponent(mensagemCobranca)}`;
-                      if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-  (async () => {
-    try {
-      const { AppLauncher } = await import('@capacitor/app-launcher');
-      await AppLauncher.openUrl({ url });
-    } catch {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url });
-    }
-  })();
-} else {
-  window.open(url, "_blank", "noopener,noreferrer");
-};;
-                    }
-                  }}
-                  className="px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
-                >
-                  📲 Cobrar
-                </button>
-                {/* ✅ BOTÃO MARCAR PAGO COM COR DIFERENCIADA (AZUL) */}
-                <button
-                  onClick={() => marcarComoPago(pedido.id)}
-                  className="px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
-                >
-                  ✅ Marcar Pago
-                </button>
-                {/* 📒 MOVER PRA FIADO */}
-                <button
-                  onClick={() => moverParaFiado(pedido)}
-                  className="px-3 py-2 bg-purple-500/10 text-purple-600 border border-purple-500/20 rounded-lg text-xs font-black uppercase hover:bg-purple-500/20 transition-all"
-                >
-                  📒 Fiado
-                </button>
-                <button
-                  onClick={() => setPedidoDetalhado(pedido)}
-                  className="px-3 py-2 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg text-xs font-black uppercase"
-                >
-                  👁️
-                </button>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-lg font-black text-emerald-400">R$ {pedido.valorTotal.toFixed(2)}</span>
+              <button
+                onClick={() => setPedidoDetalhado(pedido)}
+                className="w-9 h-9 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-xl flex items-center justify-center text-sm font-black"
+              >
+                👁️
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => {
+                  const numero = pedido.telefone?.replace(/\D/g, "");
+                  const msg = `Olá ${pedido.nome}. Seu pedido da Tapicuz está pendente de pagamento. Valor: R$ ${pedido.valorTotal.toFixed(2).replace(".", ",")}.`;
+                  const url = numero ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                    (async () => { try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); } catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); } })();
+                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                }}
+                className="py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-green-500/20 transition-all"
+              >
+                📲 Cobrar
+              </button>
+              <button
+                onClick={() => marcarComoPago(pedido.id)}
+                className="py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-blue-500/20 transition-all"
+              >
+                ✅ Pago
+              </button>
+              <button
+                onClick={() => moverParaFiado(pedido)}
+                className="py-2 bg-purple-500/10 text-purple-600 border border-purple-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-purple-500/20 transition-all"
+              >
+                📒 Fiado
+              </button>
             </div>
           </div>
         ))}
@@ -2017,16 +1989,16 @@ Agradecemos a preferência.`;
 {abaAtiva === "fiados" && (
   <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
     <h2 className="text-lg font-black text-purple-400 uppercase tracking-wider mb-6">
-      📒 Fiados ({fiados.filter(f => f.totalDevido > 0).length})
+      📒 Fiados ({fiadosAgrupados.length})
     </h2>
 
-    {fiados.filter(f => f.totalDevido > 0).length === 0 ? (
+    {fiadosAgrupados.length === 0 ? (
       <div className="text-center py-12 text-zinc-500 font-bold uppercase">
         ✅ Nenhum fiado no momento
       </div>
     ) : (
       <div className="space-y-3">
-        {fiados.filter(f => f.totalDevido > 0).map((pessoa) => (
+        {fiadosAgrupados.map((pessoa) => (
           <div key={pessoa.id} className="bg-[#FFFFFF] border border-purple-500/30 rounded-2xl overflow-hidden">
             <button
               onClick={() => setFiadoExpandido(fiadoExpandido === pessoa.id ? null : pessoa.id)}
@@ -2042,18 +2014,41 @@ Agradecemos a preferência.`;
             </button>
 
             {fiadoExpandido === pessoa.id && (
-              <div className="px-4 pb-4 border-t border-purple-500/10 pt-3 space-y-3">
+              <div className="px-4 pb-4 border-t border-purple-500/10 pt-3 space-y-4">
                 {pessoa.endereco && (
                   <p className="text-xs text-zinc-500 font-semibold">📍 {pessoa.endereco}</p>
                 )}
 
-                <div className="space-y-1">
-                  <p className="text-xs font-black text-zinc-400 uppercase tracking-wider">📄 Pedidos</p>
+                <div className="space-y-3">
+                  <p className="text-xs font-black text-zinc-400 uppercase tracking-wider">📄 Contas Pendentes</p>
                   {pessoa.pedidos?.length > 0 ? (
                     pessoa.pedidos.slice().reverse().map((p: any, i: number) => (
-                      <div key={i} className="flex justify-between text-xs text-zinc-600 font-bold bg-zinc-50 rounded-lg px-3 py-1.5">
-                        <span>{new Date(p.data).toLocaleDateString("pt-BR")} {p.horario}</span>
-                        <span>R$ {(p.valor || 0).toFixed(2)}</span>
+                      <div key={i} className="bg-gradient-to-br from-purple-50 to-white border border-purple-200 rounded-xl p-4 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-black text-purple-700">
+                            {new Date(p.data).toLocaleDateString("pt-BR")}
+                          </span>
+                          <span className="text-xs text-zinc-400 font-bold">{p.horario}</span>
+                        </div>
+                        {p.itens && Object.keys(p.itens).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(p.itens || {})
+                              .filter(([_, qtd]) => Number(qtd) > 0)
+                              .map(([item, qtd]) => {
+                                const prod = produtos.find(pr => pr.chave === item);
+                                return (
+                                  <span key={item} className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">
+                                    {prod?.nome || item} x{String(qtd)}
+                                  </span>
+                                );
+                              })}
+                          </div>
+                        )}
+                        <div className="flex justify-end">
+                          <span className="text-sm font-black text-red-500">
+                            R$ {(p.valor || 0).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -2063,20 +2058,25 @@ Agradecemos a preferência.`;
 
                 {pessoa.pagamentos?.length > 0 && (
                   <div>
-                    <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-1">💰 Pagamentos</p>
+                    <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">💰 Pagamentos Realizados</p>
                     <div className="space-y-1">
                       {pessoa.pagamentos.map((pg: any, i: number) => (
-                        <div key={i} className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50 rounded-lg px-3 py-1.5">
+                        <div key={i} className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                           <span>{new Date(pg.data).toLocaleDateString("pt-BR")}</span>
                           <span>R$ {(pg.valor || 0).toFixed(2)}</span>
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-emerald-600 font-black mt-1">
+                    <p className="text-xs text-emerald-600 font-black mt-1 text-right">
                       Total pago: R$ {pessoa.pagamentos.reduce((s: number, pg: any) => s + (pg.valor || 0), 0).toFixed(2)}
                     </p>
                   </div>
                 )}
+
+                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex justify-between items-center">
+                  <span className="text-sm font-black text-zinc-600">Total Devendo</span>
+                  <span className="text-lg font-black text-red-500">R$ {(pessoa.totalDevido || 0).toFixed(2)}</span>
+                </div>
 
                 <div className="flex gap-2 pt-1">
                   {pessoa.telefone && (
