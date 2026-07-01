@@ -1413,32 +1413,27 @@ export default function AdminPainel() {
 
                   <p className="text-orange-700 font-black text-base text-center mb-3">⏱ {pedido.horario}</p>
 
-                  <div className="flex gap-2 mb-4">
+                  <div className="flex justify-center mb-4">
                     <button
-                      onClick={() => marcarPagoSemConcluir(pedido.id)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border transition-all ${
+                      onClick={() => {
+                        if (pedido.statusPagamento === "pendente" || !pedido.statusPagamento) {
+                          marcarPagoSemConcluir(pedido.id)
+                        } else if (pedido.statusPagamento === "pago") {
+                          moverParaFiado(pedido)
+                        } else {
+                          reverterPago(pedido.id)
+                        }
+                      }}
+                      className={`px-6 py-2.5 rounded-xl text-sm font-black uppercase shadow-sm border transition-all hover:scale-105 ${
                         pedido.statusPagamento === "pago"
                           ? "bg-emerald-400/30 text-emerald-800 border-emerald-500/40"
-                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"
+                          : pedido.statusPagamento === "fiado"
+                          ? "bg-purple-400/30 text-purple-800 border-purple-500/40"
+                          : "bg-red-400/30 text-red-800 border-red-500/40"
                       }`}
+                      title="Clique para alternar: Pendente → Pago → Fiado"
                     >
-                      ✅ Pago
-                    </button>
-                    <button
-                      onClick={() => moverParaPendencia(pedido.id)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border transition-all ${
-                        pedido.statusPagamento === "pendente"
-                          ? "bg-red-400/30 text-red-800 border-red-500/40"
-                          : "bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20"
-                      }`}
-                    >
-                      ⏳ Pendência
-                    </button>
-                    <button
-                      onClick={() => moverParaFiado(pedido)}
-                      className="flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border border-purple-500/30 bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 transition-all"
-                    >
-                      📒 Fiado
+                      {pedido.statusPagamento === "pago" ? "✅ Pago" : pedido.statusPagamento === "fiado" ? "📒 Fiado" : "⏳ Pendente"}
                     </button>
                   </div>
 
