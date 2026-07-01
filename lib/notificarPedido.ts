@@ -1,5 +1,3 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_NOTIFICAR_API_URL || "https://cafe-manha-server.onrender.com"
-
 export async function notificarPedido(dados: {
   nome: string
   horario: string
@@ -7,7 +5,7 @@ export async function notificarPedido(dados: {
   pedidoId?: string
 }) {
   try {
-    const res = await fetch(`${API_BASE_URL}/notificar`, {
+    const res = await fetch("/api/notificar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(dados),

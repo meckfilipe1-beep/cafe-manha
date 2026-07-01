@@ -217,17 +217,6 @@ export default function AdminPainel() {
 
   useEffect(() => {
     if (!usuarioLogado) return;
-    const q = query(collection(db, "pedidos"));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPedidos(lista);
-      setCarregando(false);
-    });
-    return () => unsubscribe();
-  }, [usuarioLogado]);
-
-  useEffect(() => {
-    if (!usuarioLogado) return;
     const qProdutos = query(collection(db, "produtos"));
     const unsubscribeProdutos = onSnapshot(qProdutos, (snap) => {
       const lista: any[] = [];
@@ -787,12 +776,15 @@ export default function AdminPainel() {
         ultimaAtualizacao: new Date().toISOString(),
       });
 
-      if (novoTotal <= 0 && dados.pedidos) {
-        for (const p of dados.pedidos) {
-          try {
-            await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" });
-          } catch {}
+      if (novoTotal <= 0) {
+        if (dados.pedidos) {
+          for (const p of dados.pedidos) {
+            try {
+              await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" });
+            } catch {}
+          }
         }
+        await deleteDoc(ref);
       }
 
       setModalPagamentoFiado(null);
@@ -842,8 +834,11 @@ export default function AdminPainel() {
   }
 
   function gerarResumoPedidoWhatsApp() {
-    const itens = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
-    return `Olá ${nomeAvulso || "Cliente"},\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\nRESUMO DO PEDIDO\n----------------------------------------\n\n*CLIENTE:* ${nomeAvulso || "Não informado"}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*FORMA DE PAGAMENTO:* ${pagamentoAvulso.toUpperCase()}\n*TROCO:* R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos muito a sua preferência!`;
+    const itens = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => {
+      const prod = produtos.find(p => p.chave === key);
+      return `• ${qtd}x ${prod?.nome || key} - R$ ${(prod?.preco || 0) * Number(qtd)}`;
+    }).join("\n");
+    return `Olá ${nomeAvulso || "Cliente"}.\nSeu pedido da Tapicuz foi recebido com sucesso!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${(nomeAvulso || "Não informado").toUpperCase()}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*PAGAMENTO:* ${pagamentoAvulso}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos  a preferência! DEUS ABENÇOE`;
   }
 
   const enviarMensagemNotificacaoWhats = (nomeCliente: string, telefone: string = "") => {
@@ -913,13 +908,17 @@ export default function AdminPainel() {
       const promessasHistorico = snapHistorico.docs.map(d => deleteDoc(doc(db, "historico_caixas", d.id)));
       await Promise.all(promessasHistorico);
 
+      const snapFiados = await getDocs(collection(db, "fiados"));
+      const promessasFiados = snapFiados.docs.map(d => deleteDoc(doc(db, "fiados", d.id)));
+      await Promise.all(promessasFiados);
+
       await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
 
       setTotalDespesasAcumuladas(0);
       setModalConfirmarZerarTudo(false);
       setAbaAtiva("pedidos");
 
-      setNotificacaoCaixa("💥 SISTEMA RESETADO! Pedidos, histórico e contadores foram limpos.");
+      setNotificacaoCaixa("💥 SISTEMA RESETADO! Pedidos, fiados, histórico e contadores foram limpos.");
       setTimeout(() => setNotificacaoCaixa(null), 8000);
 
     } catch (error) {
@@ -1029,6 +1028,15 @@ export default function AdminPainel() {
             <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
           </button>
 
+          {/* 📜 VENDAS PAGAS */}
+          <button 
+            onClick={() => setAbaAtiva("historico")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+          >
+            <span className="text-lg">📜</span>
+            <span>VENDAS PAGAS ({pedidosPagos.length})</span>
+          </button>
+
           {/* 📒 FIADOS */}
           <button 
             onClick={() => setAbaAtiva("fiados")} 
@@ -1037,24 +1045,6 @@ export default function AdminPainel() {
             <span className="text-lg">📒</span>
             <span>FIADOS ({fiadosAgrupados.length})</span>
           </button>
-
-          {/* ⚙️ PRODUTOS */}
-          <button 
-            onClick={() => setAbaAtiva("produtos")} 
-            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "produtos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
-          >
-            <span className="text-lg">⚙️</span>
-            <span>CONTROLE</span>
-          </button>
-
-          {/* 📜 VENDAS PAGAS */}
-<button 
-  onClick={() => setAbaAtiva("historico")} 
-  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "historico" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
->
-  <span className="text-lg">📜</span>
-  <span>VENDAS PAGAS ({pedidosPagos.length})</span>
-</button>
 
 {/* 💰 CAIXA GERAL */}
 <button 
@@ -1071,7 +1061,7 @@ export default function AdminPainel() {
   className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "demandas" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
 >
   <span className="text-lg">📋</span>
-  <span>DEMANDAS ({pedidos.length})</span>
+  <span>DEMANDAS ({pedidosAtivos.length})</span>
 </button>
 
 {/* 🆕 RANKING - AGORA FUNCIONANDO */}
@@ -1080,7 +1070,16 @@ export default function AdminPainel() {
   className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "ranking" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
 >
   <span className="text-lg">📈</span>
-  <span>RANKING</span>
+          <span>RANKING</span>
+</button>
+
+{/* ⚙️ PRODUTOS */}
+<button 
+  onClick={() => setAbaAtiva("produtos")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "produtos" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+>
+  <span className="text-lg">⚙️</span>
+  <span>CONTROLE</span>
 </button>
 
 </div>
@@ -1737,40 +1736,34 @@ export default function AdminPainel() {
                     }
 
                     let mensagem = `Olá ${nomeAvulso}.\n`;
-                    mensagem += `Seu pedido foi recebido e já está sendo preparado!\n\n`;
-                    mensagem += `RESUMO DO PEDIDO\n`;
-                    mensagem += `----------------------------------------\n\n`;
-                    mensagem += `CLIENTE: ${nomeAvulso}\n`;
-                    mensagem += enderecoCompleto ? `ENDEREÇO: ${enderecoCompleto}\n` : "";
-                    mensagem += observacaoAvulso ? `OBSERVAÇÃO: ${observacaoAvulso}\n` : "";
-                    mensagem += `HORÁRIO: ${horarioAvulso}\n`;
-                    mensagem += `FORMA DE PAGAMENTO: ${pagamentoAvulso}\n`;
-
-                    if (pagamentoAvulso === "Dinheiro") {
-                      mensagem += `TROCO: ${trocoAvulsoCalculado > 0 ? `R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}` : "SEM TROCO"}\n`;
-                    }
-
+                    mensagem += `Seu pedido da Tapicuz foi recebido com sucesso!\n\n`;
+                    mensagem += `*=== RESUMO DO PEDIDO ===*\n\n`;
+                    mensagem += `*CLIENTE:* ${nomeAvulso.toUpperCase()}\n`;
+                    mensagem += enderecoCompleto ? `*ENDEREÇO:* ${enderecoCompleto.toUpperCase()}\n` : "";
+                    mensagem += observacaoAvulso ? `*OBSERVAÇÃO:* ${observacaoAvulso}\n` : "";
+                    mensagem += `*HORÁRIO:* ${horarioAvulso}\n`;
+                    mensagem += `*PAGAMENTO:* ${pagamentoAvulso}\n`;
                     mensagem += `----------------------------------------\n`;
-                    mensagem += `ITENS DO PEDIDO\n`;
+                    mensagem += `*ITENS DO PEDIDO*\n`;
 
                     let temItens = false;
                     Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
                       if (qtd > 0) {
                         const prod = produtos.find(p => p.chave === chave);
                         if (prod) {
-                          mensagem += `${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
+                          mensagem += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
                           temItens = true;
                         }
                       }
                     });
 
                     if (!temItens) {
-                      mensagem += `NENHUM ITEM CADASTRADO\n`;
+                      mensagem += `• NENHUM ITEM CADASTRADO\n`;
                     }
 
                     mensagem += `----------------------------------------\n`;
-                    mensagem += `VALOR TOTAL: R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
-                    mensagem += `Agradecemos a sua preferência!`;
+                    mensagem += `*VALOR TOTAL:* R$ ${valorTotalAvulso.replace(".", ",")}\n\n`;
+                    mensagem += `Agradecemos  a preferência! DEUS ABENÇOE`;
 
                     return mensagem;
                   };
@@ -2065,74 +2058,54 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 <span className="text-xl">👤</span>
                 <h3 className="font-black text-base uppercase text-[#27272A]">{pessoa.nome}</h3>
               </div>
-              <span className={`text-zinc-400 transition-transform ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
-                ▼
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-black text-red-500">R$ {(pessoa.totalDevido || 0).toFixed(2)}</span>
+                <span className={`text-zinc-400 transition-transform text-xs ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
+                  ▼
+                </span>
+              </div>
             </button>
 
             {fiadoExpandido === pessoa.id && (
-              <div className="px-4 pb-4 border-t border-purple-500/10 pt-3 space-y-4">
-                {pessoa.endereco && (
-                  <p className="text-xs text-zinc-500 font-semibold">📍 {pessoa.endereco}</p>
-                )}
-
-                <div className="space-y-3">
-                  <p className="text-xs font-black text-zinc-400 uppercase tracking-wider">📄 Contas Pendentes</p>
-                  {pessoa.pedidos?.length > 0 ? (
-                    pessoa.pedidos.slice().reverse().map((p: any, i: number) => (
-                      <div key={i} className="bg-gradient-to-br from-purple-50 to-white border border-purple-200 rounded-xl p-4 space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-black text-purple-700">
-                            {new Date(p.data).toLocaleDateString("pt-BR")}
-                          </span>
-                          <span className="text-xs text-zinc-400 font-bold">{p.horario}</span>
-                        </div>
-                        {p.itens && Object.keys(p.itens).length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(p.itens || {})
-                              .filter(([_, qtd]) => Number(qtd) > 0)
-                              .map(([item, qtd]) => {
-                                const prod = produtos.find(pr => pr.chave === item);
-                                return (
-                                  <span key={item} className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">
-                                    {prod?.nome || item} x{String(qtd)}
-                                  </span>
-                                );
-                              })}
-                          </div>
-                        )}
-                        <div className="flex justify-end">
-                          <span className="text-sm font-black text-red-500">
-                            R$ {(p.valor || 0).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-zinc-400">Nenhum pedido registrado</p>
-                  )}
-                </div>
-
-                {pessoa.pagamentos?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">💰 Pagamentos Realizados</p>
-                    <div className="space-y-1">
-                      {pessoa.pagamentos.map((pg: any, i: number) => (
-                        <div key={i} className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                          <span>{new Date(pg.data).toLocaleDateString("pt-BR")}</span>
-                          <span>R$ {(pg.valor || 0).toFixed(2)}</span>
-                        </div>
-                      ))}
+              <div className="px-4 pb-4 border-t border-purple-500/10 pt-3 space-y-3">
+                {pessoa.pedidos?.slice().reverse().map((p: any, i: number) => (
+                  <div key={i} className="bg-purple-50/50 border border-purple-100 rounded-xl p-3 space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-purple-700">
+                        {new Date(p.data).toLocaleDateString("pt-BR")} {p.horario}
+                      </span>
+                      <span className="text-sm font-black text-red-500">R$ {(p.valor || 0).toFixed(2)}</span>
                     </div>
-                    <p className="text-xs text-emerald-600 font-black mt-1 text-right">
-                      Total pago: R$ {pessoa.pagamentos.reduce((s: number, pg: any) => s + (pg.valor || 0), 0).toFixed(2)}
-                    </p>
+                    {p.itens && Object.keys(p.itens).filter(k => Number(p.itens[k]) > 0).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(p.itens)
+                          .filter(([_, qtd]) => Number(qtd) > 0)
+                          .map(([item, qtd]) => {
+                            const prod = produtos.find(pr => pr.chave === item);
+                            return (
+                              <span key={item} className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">
+                                {prod?.nome || item} x{String(qtd)}
+                              </span>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
 
-                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex justify-between items-center">
-                  <span className="text-sm font-black text-zinc-600">Total Devendo</span>
-                  <span className="text-lg font-black text-red-500">R$ {(pessoa.totalDevido || 0).toFixed(2)}</span>
+                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-1">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-zinc-500">Total das compras</span>
+                    <span className="text-zinc-700">R$ {(pessoa.pedidos?.reduce((s: number, p: any) => s + (p.valor || 0), 0) || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-emerald-600">Total pago</span>
+                    <span className="text-emerald-600">R$ {(pessoa.pagamentos?.reduce((s: number, pg: any) => s + (pg.valor || 0), 0) || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-black border-t border-zinc-200 pt-1">
+                    <span className="text-red-600">Falta pagar</span>
+                    <span className="text-red-600">R$ {(pessoa.totalDevido || 0).toFixed(2)}</span>
+                  </div>
                 </div>
 
                 <div className="flex gap-2 pt-1">
@@ -2348,11 +2321,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 onClick={() => {
                   if (!p.telefone) { alert("Cliente não informou telefone."); return; }
                   const numero = p.telefone.replace(/\D/g, "");
-                  let msg = `Olá ${p.nome}.\nSeu pedido da Tapicuz foi recebido e já está sendo preparado!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${p.nome.toUpperCase()}\n*ENDEREÇO:* ${String(p.endereco || 'NÃO INFORMADO')}\n${p.observacao ? `*OBSERVAÇÃO:* ${p.observacao}\n` : ""}*HORÁRIO:* ${p.horario}\n*PAGAMENTO:* ${p.pagamento}\n`;
-                  if (p.pagamento === 'Dinheiro') {
-                    const vt = p.troco;
-                    msg += `*TROCO:* ${vt > 0 ? `R$ ${vt.toFixed(2).replace('.', ',')}` : "SEM TROCO"}\n`;
-                  }
+                  let msg = `Olá ${p.nome}.\nSeu pedido da Tapicuz foi recebido com sucesso!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${p.nome.toUpperCase()}\n*ENDEREÇO:* ${String(p.endereco || 'NÃO INFORMADO')}\n${p.observacao ? `*OBSERVAÇÃO:* ${p.observacao}\n` : ""}*HORÁRIO:* ${p.horario}\n*PAGAMENTO:* ${p.pagamento}\n`;
                   msg += `----------------------------------------\n*ITENS DO PEDIDO*\n`;
                   let temItens = false;
                   if (p.itens && typeof p.itens === 'object' && !Array.isArray(p.itens)) {
@@ -2369,7 +2338,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                     });
                   }
                   if (!temItens) { msg += `• NENHUM ITEM CADASTRADO\n`; }
-                   msg += `----------------------------------------\n*VALOR TOTAL:* R$ ${p.valorTotal.toFixed(2).replace('.', ',')}\n\nAgradecemos muito a preferência!`;
+                   msg += `----------------------------------------\n*VALOR TOTAL:* R$ ${p.valorTotal.toFixed(2).replace('.', ',')}\n\nAgradecemos  a preferência! DEUS ABENÇOE`;
                   const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
                   if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
                     (async () => {
@@ -2595,7 +2564,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 {/* ================================================== */}
 {abaAtiva === "historico" && (
   <div className="bg-[#FFFAF5] border border-[#F3E9DD] rounded-3xl p-6 shadow-lg">
-    <h2 className="text-lg font-black text-orange-500 uppercase tracking-wider mb-6 flex items-center gap-2">
+    <h2 className="text-lg font-black text-orange-500 uppercase tracking-wider mb-6 flex items-center justify-center gap-2">
       Vendas Pagas <span className="text-orange-400">({pedidosPagos.length})</span>
     </h2>
 
@@ -2881,7 +2850,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
   <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
     <div className="bg-white p-6 rounded-lg max-w-sm w-full text-center">
       <h3 className="text-lg font-bold text-red-700 mb-4">⚠️ Atenção!</h3>
-      <p className="mb-6">Essa ação irá apagar todos os pedidos e zerar as despesas. Tem certeza?</p>
+      <p className="mb-6">Essa ação irá apagar TODOS os pedidos, fiados, histórico e zerar as despesas. Tem certeza?</p>
       <div className="flex gap-3 justify-center">
         <button 
           onClick={() => setModalConfirmarZerarTudo(false)}
