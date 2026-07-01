@@ -158,7 +158,7 @@ export default function AdminPainel() {
   const [mostrarModalCopiado, setMostrarModalCopiado] = useState(false);
   const [pedidoSelecionadoParaConcluir, setPedidoSelecionadoParaConcluir] = useState<any | null>(null);
   const [mostrarResumoFinalAvulso, setMostrarResumoFinalAvulso] = useState(false);
-  const [statusAvulsoSelecionado, setStatusAvulsoSelecionado] = useState<"pago" | "espera" | "pendente" | null>(null);
+  const [statusAvulsoSelecionado, setStatusAvulsoSelecionado] = useState<"pago" | "espera" | "fiado" | null>(null);
   const [pedidoDetalhado, setPedidoDetalhado] = useState<any | null>(null);
   const [submenuAcoes, setSubmenuAcoes] = useState<"principal" | "concluir" | "zap">("principal");
   const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false);
@@ -481,12 +481,13 @@ export default function AdminPainel() {
     });
   };
 
-  const finalizarPedidoAvulsoComStatusRoteado = async (status: "pago" | "espera" | "pendente") => {
+  const finalizarPedidoAvulsoComStatusRoteado = async (status: "pago" | "espera" | "fiado") => {
     if (!usuarioLogado) return;
     try {
       setNotificacaoCaixa("⏳ Registrando pedido...");
 
       const itensNovos = { ...itensAvulsos };
+      let pedidoIdParaFiado: string | null = null;
 
       const pedidoExistente = await buscarPedidoAtivoMesmaPessoa(nomeAvulso, whatsappAvulso || "");
 
@@ -532,9 +533,11 @@ export default function AdminPainel() {
           horario: horarioAvulso || pedidoExistente.data.horario || "",
           pagamento: pagamentoAvulso || pedidoExistente.data.pagamento || "Pix",
           troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : pedidoExistente.data.troco || 0,
-          statusPagamento: status === "pago" ? "pago" : pedidoExistente.data.statusPagamento || "pendente",
-          concluido: status === "pago" ? true : pedidoExistente.data.concluido || false,
+          statusPagamento: status === "pago" ? "pago" : status === "fiado" ? "fiado" : pedidoExistente.data.statusPagamento || "pendente",
+          concluido: status === "pago" || status === "fiado" ? true : pedidoExistente.data.concluido || false,
         });
+
+        pedidoIdParaFiado = pedidoExistente.id;
 
         notificarPedido({
           nome: nomeAvulso,
@@ -555,13 +558,14 @@ export default function AdminPainel() {
           troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : 0,
           valorTotal: valorTotalAvulsoNumerico,
           itens: itensNovos,
-          statusPagamento: status === "pago" ? "pago" : "pendente",
-          concluido: status === "pago",
+          statusPagamento: status === "pago" ? "pago" : status === "fiado" ? "fiado" : "pendente",
+          concluido: status === "pago" || status === "fiado",
           dataCriacao: new Date(),
           abaOrigem: "avulso"
         };
 
         const docRef = await addDoc(collection(db, "pedidos"), novoPedido);
+        pedidoIdParaFiado = docRef.id;
 
         notificarPedido({
           nome: nomeAvulso,
@@ -570,21 +574,38 @@ export default function AdminPainel() {
           pedidoId: docRef.id,
         });
 
-        (async () => {
-          const keyFiado = `${whatsappAvulso || "sem_telefone"}_${nomeAvulso}`;
-          const refFiado = doc(db, "fiados", keyFiado);
-          const snapFiado = await getDoc(refFiado);
-          if (snapFiado.exists()) {
-            const dataFiado = snapFiado.data();
-            await updateDoc(refFiado, {
-              pedidos: [...(dataFiado.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario: horarioAvulso, valor: valorTotalAvulsoNumerico, itens: itensNovos }],
-              totalDevido: (dataFiado.totalDevido || 0) + valorTotalAvulsoNumerico,
-              ultimaAtualizacao: new Date().toISOString(),
-            });
-          }
-        })();
-
         setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
+      }
+
+      if (status === "fiado" && pedidoIdParaFiado) {
+        const keyFiado = `${whatsappAvulso || "sem_telefone"}_${nomeAvulso}`;
+        const refFiado = doc(db, "fiados", keyFiado);
+        const snapFiado = await getDoc(refFiado);
+        const pedidoItem = {
+          pedidoId: pedidoIdParaFiado,
+          data: new Date().toISOString(),
+          horario: horarioAvulso,
+          valor: valorTotalAvulsoNumerico,
+          itens: itensNovos,
+        };
+        if (snapFiado.exists()) {
+          const dataFiado = snapFiado.data();
+          await updateDoc(refFiado, {
+            pedidos: [...(dataFiado.pedidos || []), pedidoItem],
+            totalDevido: (dataFiado.totalDevido || 0) + valorTotalAvulsoNumerico,
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+        } else {
+          await setDoc(refFiado, {
+            nome: nomeAvulso,
+            telefone: whatsappAvulso || "",
+            endereco: `${ruaAvulso || ""}${numeroAvulso ? `, Nº ${numeroAvulso}` : ""}${referenciaAvulso ? ` - ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
+            totalDevido: valorTotalAvulsoNumerico,
+            pedidos: [pedidoItem],
+            pagamentos: [],
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+        }
       }
 
       setNomeAvulso("");
@@ -611,7 +632,7 @@ export default function AdminPainel() {
       setTimeout(() => {
         if (status === "pago") router.push("/admin?aba=historico");
         if (status === "espera") router.push("/admin?aba=pedidos");
-        if (status === "pendente") router.push("/admin?aba=pendencias");
+        if (status === "fiado") router.push("/admin?aba=fiados");
         setNotificacaoCaixa(null);
       }, 600);
 
@@ -681,6 +702,15 @@ export default function AdminPainel() {
     try {
       await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pendente" });
       setNotificacaoCaixa("🟡 MOVIDO PARA PENDENTE!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    } catch (erro) { console.error(erro); }
+  }
+
+  async function moverParaPendencia(id: string) {
+    if (!usuarioLogado) return;
+    try {
+      await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pendente" });
+      setNotificacaoCaixa("🔴 MOVIDO PARA AS PENDÊNCIAS!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
   }
@@ -1383,17 +1413,32 @@ export default function AdminPainel() {
 
                   <p className="text-orange-700 font-black text-base text-center mb-3">⏱ {pedido.horario}</p>
 
-                  <div className="flex justify-center mb-4">
+                  <div className="flex gap-2 mb-4">
                     <button
-                      onClick={() => pedido.statusPagamento === "pago" ? reverterPago(pedido.id) : marcarPagoSemConcluir(pedido.id)}
-                      className={`px-6 py-2.5 rounded-xl text-sm font-black uppercase shadow-sm border transition-all ${
+                      onClick={() => marcarPagoSemConcluir(pedido.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border transition-all ${
                         pedido.statusPagamento === "pago"
-                          ? "bg-emerald-400/30 text-emerald-800 border-emerald-500/40 hover:bg-red-400/30 hover:text-red-800 hover:border-red-500/40"
-                          : "bg-red-400/30 text-red-800 border-red-500/40 hover:bg-emerald-400/30 hover:text-emerald-800 hover:border-emerald-500/40"
+                          ? "bg-emerald-400/30 text-emerald-800 border-emerald-500/40"
+                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"
                       }`}
-                      title="Clique para alternar"
                     >
-                      {pedido.statusPagamento === "pago" ? "✅ Pago" : "⏳ Pendente"}
+                      ✅ Pago
+                    </button>
+                    <button
+                      onClick={() => moverParaPendencia(pedido.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border transition-all ${
+                        pedido.statusPagamento === "pendente"
+                          ? "bg-red-400/30 text-red-800 border-red-500/40"
+                          : "bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20"
+                      }`}
+                    >
+                      ⏳ Pendência
+                    </button>
+                    <button
+                      onClick={() => moverParaFiado(pedido)}
+                      className="flex-1 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm border border-purple-500/30 bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 transition-all"
+                    >
+                      📒 Fiado
                     </button>
                   </div>
 
@@ -1809,10 +1854,10 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               <button
                 type="button"
                 disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
-                onClick={() => { setStatusAvulsoSelecionado("pendente"); setMostrarResumoFinalAvulso(true); }}
-                className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+                onClick={() => { setStatusAvulsoSelecionado("fiado"); setMostrarResumoFinalAvulso(true); }}
+                className="py-3 bg-purple-500 hover:bg-purple-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
-                ⏳ Pendente
+                📒 Fiado
               </button>
             </div>
           </div>
@@ -1892,7 +1937,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
           <p className="text-xl font-black mt-1 uppercase">
             {statusAvulsoSelecionado === "pago" && <span className="text-emerald-600">PAGO</span>}
             {statusAvulsoSelecionado === "espera" && <span className="text-blue-600">EM ESPERA</span>}
-            {statusAvulsoSelecionado === "pendente" && <span className="text-amber-600">PENDENTE</span>}
+            {statusAvulsoSelecionado === "fiado" && <span className="text-purple-600">FIADO</span>}
           </p>
         </div>
 
@@ -2096,24 +2141,22 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 </div>
 
                 <div className="flex gap-2 pt-1">
-                  {pessoa.telefone && (
-                    <button
-                      onClick={() => {
-                        const numero = pessoa.telefone.replace(/\D/g, "");
-                        const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
-                        const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
-                        if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-                          (async () => {
-                            try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
-                            catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
-                          })();
-                        } else { window.open(url, "_blank", "noopener,noreferrer"); }
-                      }}
-                      className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
-                    >
-                      📲 Cobrar R$ {(pessoa.totalDevido || 0).toFixed(2)}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
+                      const numero = pessoa.telefone?.replace(/\D/g, "");
+                      const url = numero ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+                      if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                        (async () => {
+                          try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                          catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                        })();
+                      } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                    }}
+                    className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
+                  >
+                    📲 Cobrar
+                  </button>
                   <button
                     onClick={() => {
                       setModalPagamentoFiado({ pessoa });
