@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { db } from "@/lib/firebase"
-import { collection, doc, onSnapshot, addDoc, query, where, getDocs, updateDoc } from "firebase/firestore"
+import { collection, doc, onSnapshot, addDoc, query, where, getDocs, getDoc, updateDoc } from "firebase/firestore"
 import { buscarPedidoAtivoMesmaPessoa, mergeItens } from "@/lib/pedidoUtils"
 import Image from "next/image"
 import { gerarPixCopiaECola } from "@/lib/pix"
@@ -430,6 +430,18 @@ export default function ClientePainel() {
           valorTotal: valorTotalFinal,
           pedidoId: docRef.id,
         })
+
+        const fiadoKey = `${telefone.trim()}_${nome.trim()}`
+        const fiadoRef = doc(db, "fiados", fiadoKey)
+        const fiadoSnap = await getDoc(fiadoRef)
+        if (fiadoSnap.exists()) {
+          const fiadoData = fiadoSnap.data()
+          await updateDoc(fiadoRef, {
+            pedidos: [...(fiadoData.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario, valor: valorTotalFinal, itens }],
+            totalDevido: (fiadoData.totalDevido || 0) + valorTotalFinal,
+            ultimaAtualizacao: new Date().toISOString(),
+          })
+        }
 
         setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
         setCodigoPix("")

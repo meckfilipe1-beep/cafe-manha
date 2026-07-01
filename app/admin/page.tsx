@@ -558,6 +558,20 @@ export default function AdminPainel() {
           pedidoId: docRef.id,
         });
 
+        (async () => {
+          const keyFiado = `${whatsappAvulso || "sem_telefone"}_${nomeAvulso}`;
+          const refFiado = doc(db, "fiados", keyFiado);
+          const snapFiado = await getDoc(refFiado);
+          if (snapFiado.exists()) {
+            const dataFiado = snapFiado.data();
+            await updateDoc(refFiado, {
+              pedidos: [...(dataFiado.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario: horarioAvulso, valor: valorTotalAvulsoNumerico, itens: itensNovos }],
+              totalDevido: (dataFiado.totalDevido || 0) + valorTotalAvulsoNumerico,
+              ultimaAtualizacao: new Date().toISOString(),
+            });
+          }
+        })();
+
         setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
       }
 
@@ -2020,21 +2034,11 @@ Agradecemos a preferência.`;
             >
               <div className="flex items-center gap-3">
                 <span className="text-xl">👤</span>
-                <div>
-                  <h3 className="font-black text-base uppercase text-[#27272A]">{pessoa.nome}</h3>
-                  {pessoa.telefone && (
-                    <p className="text-xs text-zinc-500 font-semibold">📞 {pessoa.telefone}</p>
-                  )}
-                </div>
+                <h3 className="font-black text-base uppercase text-[#27272A]">{pessoa.nome}</h3>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="px-4 py-1.5 rounded-lg text-sm font-black bg-purple-500/10 text-purple-500 border border-purple-500/20">
-                  R$ {(pessoa.totalDevido || 0).toFixed(2)}
-                </span>
-                <span className={`text-zinc-400 transition-transform ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
-                  ▼
-                </span>
-              </div>
+              <span className={`text-zinc-400 transition-transform ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
+                ▼
+              </span>
             </button>
 
             {fiadoExpandido === pessoa.id && (
