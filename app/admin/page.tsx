@@ -165,6 +165,9 @@ export default function AdminPainel() {
   const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
   const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
   const [pedidoParaExcluir, setPedidoParaExcluir] = useState<any | null>(null);
+  const [fiados, setFiados] = useState<any[]>([]);
+  const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
+  const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
 
@@ -283,6 +286,18 @@ export default function AdminPainel() {
       ultimoTotalPedidos.current = qtdAtivos;
       setPedidos(listaPedidos);
       setCarregando(false);
+    });
+    return () => unsubscribe();
+  }, [usuarioLogado]);
+
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    const qFiados = query(collection(db, "fiados"));
+    const unsubscribe = onSnapshot(qFiados, (snap) => {
+      const lista: any[] = [];
+      snap.forEach((doc) => lista.push({ id: doc.id, ...doc.data() }));
+      lista.sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+      setFiados(lista);
     });
     return () => unsubscribe();
   }, [usuarioLogado]);
@@ -651,6 +666,89 @@ export default function AdminPainel() {
     } catch (error) { console.error(error); }
   }
 
+  async function moverParaFiado(pedido: any) {
+    if (!usuarioLogado) return;
+    try {
+      const chave = `${pedido.telefone || "sem_telefone"}_${pedido.nome}`;
+      const ref = doc(db, "fiados", chave);
+      const snap = await getDoc(ref);
+
+      const pedidoItem = {
+        pedidoId: pedido.id,
+        data: pedido.dataCriacao || new Date().toISOString(),
+        horario: pedido.horario || "",
+        valor: pedido.valorTotal || 0,
+        itens: pedido.itens || {},
+      };
+
+      if (snap.exists()) {
+        const dados = snap.data();
+        await updateDoc(ref, {
+          pedidos: [...(dados.pedidos || []), pedidoItem],
+          totalDevido: (dados.totalDevido || 0) + (pedido.valorTotal || 0),
+          ultimaAtualizacao: new Date().toISOString(),
+        });
+      } else {
+        await setDoc(ref, {
+          nome: pedido.nome,
+          telefone: pedido.telefone || "",
+          endereco: pedido.endereco || "",
+          totalDevido: pedido.valorTotal || 0,
+          pedidos: [pedidoItem],
+          pagamentos: [],
+          ultimaAtualizacao: new Date().toISOString(),
+        });
+      }
+
+      await updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado" });
+      setNotificacaoCaixa("📒 MOVIDO PARA FIADO!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+      if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
+    } catch (erro) {
+      console.error(erro);
+      setNotificacaoCaixa("❌ Erro ao mover para fiado");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    }
+  }
+
+  async function registrarPagamentoFiado(pessoaId: string, valorPago: number) {
+    if (!usuarioLogado || !valorPago || valorPago <= 0) return;
+    try {
+      const ref = doc(db, "fiados", pessoaId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+
+      const dados = snap.data();
+      const novoTotal = Math.max(0, (dados.totalDevido || 0) - valorPago);
+
+      await updateDoc(ref, {
+        totalDevido: novoTotal,
+        pagamentos: [
+          ...(dados.pagamentos || []),
+          { valor: valorPago, data: new Date().toISOString(), observacao: "" }
+        ],
+        ultimaAtualizacao: new Date().toISOString(),
+      });
+
+      if (novoTotal <= 0 && dados.pedidos) {
+        for (const p of dados.pedidos) {
+          try {
+            await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" });
+          } catch {}
+        }
+      }
+
+      setModalPagamentoFiado(null);
+      setValorPagamentoFiado("");
+      setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}`);
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    } catch (erro) {
+      console.error(erro);
+      setNotificacaoCaixa("❌ Erro ao registrar pagamento");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    }
+  }
+
   async function alternarStatusFuncionamento() {
     if (!usuarioLogado) return;
     try {
@@ -919,13 +1017,13 @@ export default function AdminPainel() {
   <span>RANKING</span>
 </button>
 
-{/* 🚨 ZERAR SISTEMA */}
+{/* 📒 FIADOS */}
 <button 
-  onClick={() => setModalConfirmarZerarTudo(true)} 
-  className="p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all bg-[#FFFFFF] border-red-800 text-red-500 hover:bg-red-950/20"
+  onClick={() => setAbaAtiva("fiados")} 
+  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "fiados" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
 >
-  <span className="text-lg">🚨</span>
-  <span>ZERAR SISTEMA</span>
+  <span className="text-lg">📒</span>
+  <span>FIADOS ({fiados.filter(f => f.totalDevido > 0).length})</span>
 </button>
 
 </div>
@@ -1188,6 +1286,25 @@ export default function AdminPainel() {
             </div>
           </div>
         </div>
+
+        {/* 🚨 ZERAR SISTEMA */}
+        <div className="mt-8 border-t-2 border-red-500/30 pt-8">
+          <div className="max-w-md mx-auto text-center space-y-4">
+            <h3 className="text-lg font-black text-red-500 uppercase tracking-wider">
+              🚨 Zona de Perigo
+            </h3>
+            <p className="text-xs text-zinc-500 font-bold">
+              Isso apaga todos os pedidos, despesas e zera o sistema. Use apenas quando necessário.
+            </p>
+            <button
+              onClick={() => setModalConfirmarZerarTudo(true)}
+              className="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-black uppercase rounded-2xl text-sm tracking-wider transition-all shadow-lg hover:shadow-xl"
+            >
+              🚨 ZERAR SISTEMA
+            </button>
+          </div>
+        </div>
+
       </div>
     )}
 
@@ -1857,6 +1974,13 @@ Agradecemos a preferência.`;
                 >
                   ✅ Marcar Pago
                 </button>
+                {/* 📒 MOVER PRA FIADO */}
+                <button
+                  onClick={() => moverParaFiado(pedido)}
+                  className="px-3 py-2 bg-purple-500/10 text-purple-600 border border-purple-500/20 rounded-lg text-xs font-black uppercase hover:bg-purple-500/20 transition-all"
+                >
+                  📒 Fiado
+                </button>
                 <button
                   onClick={() => setPedidoDetalhado(pedido)}
                   className="px-3 py-2 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg text-xs font-black uppercase"
@@ -1869,6 +1993,134 @@ Agradecemos a preferência.`;
         ))}
       </div>
     )}
+  </div>
+)}
+
+{/* ================================================== */}
+{/* ================= ABA: FIADOS ================== */}
+{/* ================================================== */}
+{abaAtiva === "fiados" && (
+  <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
+    <h2 className="text-lg font-black text-purple-400 uppercase tracking-wider mb-6">
+      📒 Fiados ({fiados.filter(f => f.totalDevido > 0).length})
+    </h2>
+
+    {fiados.filter(f => f.totalDevido > 0).length === 0 ? (
+      <div className="text-center py-12 text-zinc-500 font-bold uppercase">
+        ✅ Nenhum fiado no momento
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {fiados.filter(f => f.totalDevido > 0).map((pessoa) => (
+          <div
+            key={pessoa.id}
+            className="bg-[#FFFFFF] border border-purple-500/30 rounded-2xl p-5"
+          >
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="font-black text-lg uppercase text-[#27272A]">{pessoa.nome}</h3>
+                {pessoa.telefone && (
+                  <p className="text-xs text-zinc-500 font-semibold">📞 {pessoa.telefone}</p>
+                )}
+                {pessoa.endereco && (
+                  <p className="text-xs text-zinc-500 font-semibold">📍 {pessoa.endereco}</p>
+                )}
+              </div>
+              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                R$ {(pessoa.totalDevido || 0).toFixed(2)}
+              </span>
+            </div>
+
+            <div className="space-y-1 mb-4">
+              {pessoa.pedidos?.slice(-5).reverse().map((p: any, i: number) => (
+                <div key={i} className="flex justify-between text-xs text-zinc-600 font-bold bg-zinc-50 rounded-lg px-3 py-1.5">
+                  <span>📄 {new Date(p.data).toLocaleDateString("pt-BR")} {p.horario}</span>
+                  <span>R$ {(p.valor || 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            {pessoa.pagamentos?.length > 0 && (
+              <div className="mb-3 text-xs text-emerald-600 font-bold">
+                💰 Pagamentos: {pessoa.pagamentos.map((pg: any) => `R$ ${pg.valor.toFixed(2)}`).join(" + ")}
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-2">
+              {pessoa.telefone && (
+                <button
+                  onClick={() => {
+                    const numero = pessoa.telefone.replace(/\D/g, "");
+                    const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
+                    const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                    if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                      (async () => {
+                        try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                        catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                      })();
+                    } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                  }}
+                  className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
+                >
+                  📲 Cobrar
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setModalPagamentoFiado({ pessoa });
+                  setValorPagamentoFiado("");
+                }}
+                className="flex-1 px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
+              >
+                💰 Receber
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+
+{/* 📝 MODAL RECEBER FIADO */}
+{modalPagamentoFiado && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-[#FFFAF5] border border-blue-500/30 w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl">
+      <h3 className="text-sm font-black text-blue-600 uppercase tracking-wider text-center">
+        💰 Receber - {modalPagamentoFiado.pessoa.nome}
+      </h3>
+      <p className="text-center text-zinc-500 font-bold text-sm">
+        Total devido: <span className="text-purple-600">R$ {(modalPagamentoFiado.pessoa.totalDevido || 0).toFixed(2)}</span>
+      </p>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        placeholder="Valor recebido"
+        value={valorPagamentoFiado}
+        onChange={(e) => setValorPagamentoFiado(e.target.value)}
+        className="w-full bg-white border border-blue-500/30 rounded-xl p-4 text-center text-lg font-black text-blue-700 focus:outline-none focus:border-blue-500"
+        autoFocus
+      />
+      <div className="flex gap-3">
+        <button
+          onClick={() => { setModalPagamentoFiado(null); setValorPagamentoFiado(""); }}
+          className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={() => {
+            const valor = parseFloat(valorPagamentoFiado);
+            if (valor > 0) registrarPagamentoFiado(modalPagamentoFiado.pessoa.id, valor);
+          }}
+          disabled={!valorPagamentoFiado || parseFloat(valorPagamentoFiado) <= 0}
+          className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white font-black uppercase text-sm rounded-xl transition-all disabled:opacity-50"
+        >
+          💰 Receber
+        </button>
+      </div>
+    </div>
   </div>
 )}
 
