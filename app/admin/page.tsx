@@ -168,6 +168,7 @@ export default function AdminPainel() {
   const [fiados, setFiados] = useState<any[]>([]);
   const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
+  const [fiadoExpandido, setFiadoExpandido] = useState<string | null>(null);
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
 
@@ -2010,71 +2011,100 @@ Agradecemos a preferência.`;
         ✅ Nenhum fiado no momento
       </div>
     ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-3">
         {fiados.filter(f => f.totalDevido > 0).map((pessoa) => (
-          <div
-            key={pessoa.id}
-            className="bg-[#FFFFFF] border border-purple-500/30 rounded-2xl p-5"
-          >
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="font-black text-lg uppercase text-[#27272A]">{pessoa.nome}</h3>
-                {pessoa.telefone && (
-                  <p className="text-xs text-zinc-500 font-semibold">📞 {pessoa.telefone}</p>
-                )}
+          <div key={pessoa.id} className="bg-[#FFFFFF] border border-purple-500/30 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setFiadoExpandido(fiadoExpandido === pessoa.id ? null : pessoa.id)}
+              className="w-full p-4 flex items-center justify-between hover:bg-purple-50/50 transition-all text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">👤</span>
+                <div>
+                  <h3 className="font-black text-base uppercase text-[#27272A]">{pessoa.nome}</h3>
+                  {pessoa.telefone && (
+                    <p className="text-xs text-zinc-500 font-semibold">📞 {pessoa.telefone}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-4 py-1.5 rounded-lg text-sm font-black bg-purple-500/10 text-purple-500 border border-purple-500/20">
+                  R$ {(pessoa.totalDevido || 0).toFixed(2)}
+                </span>
+                <span className={`text-zinc-400 transition-transform ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
+                  ▼
+                </span>
+              </div>
+            </button>
+
+            {fiadoExpandido === pessoa.id && (
+              <div className="px-4 pb-4 border-t border-purple-500/10 pt-3 space-y-3">
                 {pessoa.endereco && (
                   <p className="text-xs text-zinc-500 font-semibold">📍 {pessoa.endereco}</p>
                 )}
-              </div>
-              <span className="px-3 py-1 rounded-lg text-xs font-black uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                R$ {(pessoa.totalDevido || 0).toFixed(2)}
-              </span>
-            </div>
 
-            <div className="space-y-1 mb-4">
-              {pessoa.pedidos?.slice(-5).reverse().map((p: any, i: number) => (
-                <div key={i} className="flex justify-between text-xs text-zinc-600 font-bold bg-zinc-50 rounded-lg px-3 py-1.5">
-                  <span>📄 {new Date(p.data).toLocaleDateString("pt-BR")} {p.horario}</span>
-                  <span>R$ {(p.valor || 0).toFixed(2)}</span>
+                <div className="space-y-1">
+                  <p className="text-xs font-black text-zinc-400 uppercase tracking-wider">📄 Pedidos</p>
+                  {pessoa.pedidos?.length > 0 ? (
+                    pessoa.pedidos.slice().reverse().map((p: any, i: number) => (
+                      <div key={i} className="flex justify-between text-xs text-zinc-600 font-bold bg-zinc-50 rounded-lg px-3 py-1.5">
+                        <span>{new Date(p.data).toLocaleDateString("pt-BR")} {p.horario}</span>
+                        <span>R$ {(p.valor || 0).toFixed(2)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-zinc-400">Nenhum pedido registrado</p>
+                  )}
                 </div>
-              ))}
-            </div>
 
-            {pessoa.pagamentos?.length > 0 && (
-              <div className="mb-3 text-xs text-emerald-600 font-bold">
-                💰 Pagamentos: {pessoa.pagamentos.map((pg: any) => `R$ ${pg.valor.toFixed(2)}`).join(" + ")}
+                {pessoa.pagamentos?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-1">💰 Pagamentos</p>
+                    <div className="space-y-1">
+                      {pessoa.pagamentos.map((pg: any, i: number) => (
+                        <div key={i} className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50 rounded-lg px-3 py-1.5">
+                          <span>{new Date(pg.data).toLocaleDateString("pt-BR")}</span>
+                          <span>R$ {(pg.valor || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-emerald-600 font-black mt-1">
+                      Total pago: R$ {pessoa.pagamentos.reduce((s: number, pg: any) => s + (pg.valor || 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  {pessoa.telefone && (
+                    <button
+                      onClick={() => {
+                        const numero = pessoa.telefone.replace(/\D/g, "");
+                        const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
+                        const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                        if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                          (async () => {
+                            try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                            catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                          })();
+                        } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                      }}
+                      className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
+                    >
+                      📲 Cobrar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setModalPagamentoFiado({ pessoa });
+                      setValorPagamentoFiado("");
+                    }}
+                    className="flex-1 px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
+                  >
+                    💰 Receber
+                  </button>
+                </div>
               </div>
             )}
-
-            <div className="flex gap-2 mt-2">
-              {pessoa.telefone && (
-                <button
-                  onClick={() => {
-                    const numero = pessoa.telefone.replace(/\D/g, "");
-                    const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
-                    const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
-                    if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-                      (async () => {
-                        try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
-                        catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
-                      })();
-                    } else { window.open(url, "_blank", "noopener,noreferrer"); }
-                  }}
-                  className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
-                >
-                  📲 Cobrar
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setModalPagamentoFiado({ pessoa });
-                  setValorPagamentoFiado("");
-                }}
-                className="flex-1 px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
-              >
-                💰 Receber
-              </button>
-            </div>
           </div>
         ))}
       </div>
