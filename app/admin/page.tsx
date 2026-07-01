@@ -999,6 +999,15 @@ export default function AdminPainel() {
             <span>PENDÊNCIAS ({pedidosPendentes.length})</span>
           </button>
 
+          {/* 📒 FIADOS */}
+          <button 
+            onClick={() => setAbaAtiva("fiados")} 
+            className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "fiados" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
+          >
+            <span className="text-lg">📒</span>
+            <span>FIADOS ({fiadosAgrupados.length})</span>
+          </button>
+
           {/* ⚙️ PRODUTOS */}
           <button 
             onClick={() => setAbaAtiva("produtos")} 
@@ -1042,15 +1051,6 @@ export default function AdminPainel() {
 >
   <span className="text-lg">📈</span>
   <span>RANKING</span>
-</button>
-
-{/* 📒 FIADOS */}
-<button 
-  onClick={() => setAbaAtiva("fiados")} 
-  className={`p-3 rounded-2xl text-[10px] xs:text-xs font-black uppercase border flex flex-col items-center justify-center gap-1.5 transition-all ${abaAtiva === "fiados" ? "bg-orange-600 text-[#27272A] border-orange-400 scale-[1.02]" : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"}`}
->
-  <span className="text-lg">📒</span>
-          <span>FIADOS ({fiadosAgrupados.length})</span>
 </button>
 
 </div>
@@ -1113,65 +1113,88 @@ export default function AdminPainel() {
           ))}
         </div>
 
-        {/* 🕒 CONFIGURAÇÕES DE FUNCIONAMENTO - TUDO CENTRALIZADO */}
+        {/* 🕒 CONFIGURAÇÕES DE FUNCIONAMENTO */}
         <div className="mt-8 border-t border-[#F3F4F6] pt-8">
-          <h3 className="text-xl font-black text-orange-500 uppercase mb-6 flex items-center justify-center gap-3 tracking-wider text-center">
-            🕒 <span className="drop-shadow-sm">Horários e Dias de Funcionamento</span>
+          <h3 className="text-lg font-black text-orange-500 uppercase mb-6 flex items-center justify-center gap-2 tracking-wider text-center">
+            🕒 Horários e Dias de Funcionamento
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-2xl mx-auto">
-            {/* HORÁRIO DE ABERTURA - CENTRALIZADO */}
-            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-2xl border border-orange-100 shadow-sm flex flex-col items-center text-center">
-              <label className="block text-sm font-black text-orange-700 uppercase mb-3 tracking-widest">
-                🌅 Horário de Abertura
-              </label>
-              <input
-                type="time"
-                value={horaAbertura}
-                onChange={(e) => setHoraAbertura(e.target.value)}
-                className="w-full max-w-[180px] bg-white border-2 border-orange-200 rounded-xl p-4 text-center text-lg font-black text-orange-800 tracking-wider shadow-inner focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all"
-              />
-            </div>
-
-            {/* HORÁRIO DE FECHAMENTO - CENTRALIZADO */}
-            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-2xl border border-orange-100 shadow-sm flex flex-col items-center text-center">
-              <label className="block text-sm font-black text-orange-700 uppercase mb-3 tracking-widest">
-                🌙 Horário de Fechamento
-              </label>
-              <input
-                type="time"
-                value={horaFechamento}
-                onChange={(e) => setHoraFechamento(e.target.value)}
-                className="w-full max-w-[180px] bg-white border-2 border-orange-200 rounded-xl p-4 text-center text-lg font-black text-orange-800 tracking-wider shadow-inner focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all"
-              />
-            </div>
+          {/* SELETOR DE HORÁRIO DIGITAL */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 max-w-xl mx-auto">
+            {[
+              { label: "🌅 Abertura", value: horaAbertura, set: setHoraAbertura },
+              { label: "🌙 Fechamento", value: horaFechamento, set: setHoraFechamento },
+            ].map((item) => {
+              const [h, m] = item.value ? item.value.split(":").map(Number) : [8, 0]
+              return (
+                <div key={item.label} className="bg-white border-2 border-orange-200 rounded-2xl p-5 shadow-sm">
+                  <label className="block text-xs font-black text-orange-600 uppercase mb-4 text-center tracking-widest">
+                    {item.label}
+                  </label>
+                  <div className="flex items-center justify-center gap-1">
+                    <select
+                      value={h}
+                      onChange={(e) => item.set(`${e.target.value.padStart(2, "0")}:${m.toString().padStart(2, "0")}`)}
+                      className="appearance-none bg-orange-50 border-2 border-orange-200 rounded-xl px-4 py-3 text-center text-lg font-black text-orange-800 focus:outline-none focus:border-orange-400 w-[76px]"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>{i.toString().padStart(2, "0")}</option>
+                      ))}
+                    </select>
+                    <span className="text-2xl font-black text-orange-400">:</span>
+                    <select
+                      value={m}
+                      onChange={(e) => item.set(`${h.toString().padStart(2, "0")}:${e.target.value.padStart(2, "0")}`)}
+                      className="appearance-none bg-orange-50 border-2 border-orange-200 rounded-xl px-4 py-3 text-center text-lg font-black text-orange-800 focus:outline-none focus:border-orange-400 w-[76px]"
+                    >
+                      {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                        <option key={m} value={m}>{m.toString().padStart(2, "0")}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
-          {/* DIAS DA SEMANA - CENTRALIZADOS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-2xl mx-auto justify-center">
-            {Object.entries(diasFuncionamento).map(([dia, ativo]) => (
-              <button
-                key={dia}
-                type="button"
-                onClick={() =>
-                  setDiasFuncionamento(prev => ({
-                    ...prev,
-                    [dia]: !prev[dia]
-                  }))
-                }
-                className={`p-4 rounded-2xl font-black uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 shadow-md flex flex-col items-center justify-center text-center ${
-                  ativo
-                    ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white border-2 border-emerald-300"
-                    : "bg-gradient-to-r from-red-500 to-rose-500 text-white border-2 border-red-300"
-                }`}
-              >
-                <span className="text-lg">{ativo ? "✅" : "❌"}</span>
-                <span className="block text-xs mt-1">{dia}</span>
-              </button>
-            ))}
-          </div>
+          {/* DIAS DA SEMANA - ORDEM CORRETA */}
+          {(() => {
+            const DIAS_ORDEM: { chave: string; rotulo: string }[] = [
+              { chave: "segunda", rotulo: "Seg" },
+              { chave: "terca", rotulo: "Ter" },
+              { chave: "quarta", rotulo: "Qua" },
+              { chave: "quinta", rotulo: "Qui" },
+              { chave: "sexta", rotulo: "Sex" },
+              { chave: "sabado", rotulo: "Sáb" },
+              { chave: "domingo", rotulo: "Dom" },
+            ]
+            return (
+              <div className="flex flex-wrap justify-center gap-2 mb-8">
+                {DIAS_ORDEM.map(({ chave, rotulo }) => {
+                  const ativo = diasFuncionamento[chave] ?? false
+                  return (
+                    <button
+                      key={chave}
+                      type="button"
+                      onClick={() =>
+                        setDiasFuncionamento(prev => ({ ...prev, [chave]: !prev[chave] }))
+                      }
+                      className={`relative w-14 h-14 rounded-2xl font-black text-sm uppercase tracking-wider transition-all transform hover:scale-110 active:scale-90 shadow-md flex flex-col items-center justify-center ${
+                        ativo
+                          ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-emerald-200"
+                          : "bg-gradient-to-b from-zinc-200 to-zinc-300 text-zinc-500"
+                      }`}
+                    >
+                      {ativo ? "✅" : "❌"}
+                      <span className="text-[10px] mt-0.5">{rotulo}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
 
-          {/* BOTÃO SALVAR - CENTRALIZADO */}
+          {/* BOTÃO SALVAR */}
           <div className="flex justify-center">
             <button
               onClick={salvarConfiguracoesFuncionamento}
@@ -1982,8 +2005,8 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 {/* ================================================== */}
 {abaAtiva === "fiados" && (
   <div className="bg-[#FFFAF5] border border-[#F3F4F6] rounded-3xl p-6 shadow-xl">
-    <h2 className="text-lg font-black text-purple-400 uppercase tracking-wider mb-6">
-      📒 Fiados ({fiadosAgrupados.length})
+    <h2 className="text-lg font-black text-purple-400 uppercase tracking-wider mb-6 text-center">
+      📒 FIADOS ({fiadosAgrupados.length})
     </h2>
 
     {fiadosAgrupados.length === 0 ? (
@@ -2088,7 +2111,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                       }}
                       className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
                     >
-                      📲 Cobrar
+                      📲 Cobrar R$ {(pessoa.totalDevido || 0).toFixed(2)}
                     </button>
                   )}
                   <button
