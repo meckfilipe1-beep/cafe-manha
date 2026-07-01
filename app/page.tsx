@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { db } from "@/lib/firebase"
-import { collection, doc, onSnapshot, addDoc, query } from "firebase/firestore"
+import { collection, doc, onSnapshot, addDoc, query, where, getDocs, updateDoc } from "firebase/firestore"
+import { buscarPedidoAtivoMesmaPessoa, mergeItens } from "@/lib/pedidoUtils"
 import Image from "next/image"
 import { gerarPixCopiaECola } from "@/lib/pix"
+import { notificarPedido } from "@/lib/notificarPedido"
 
 type Etapa = "menu" | "dados" | "observacao" | "horario" | "pagamento" | "confirmacao" | "aviso" | "sucesso"
 
@@ -337,29 +339,104 @@ export default function ClientePainel() {
       }
 
       const enderecoCompleto = `${endereco.trim()}, Nº ${numeroCasa.trim()}${referencia.trim() ? ` - Ref: ${referencia.trim()}` : ""}`
-      const payloadPedido = {
-        nome: nome.trim(),
-        telefone: telefone.trim(),
-        endereco: enderecoCompleto,
-        observacao: observacao.trim(),
-        observacoesItem,
-        pagamento,
-        troco: trocoCalculado,
-        valorTotal: valorTotalFinal,
-        horario,
-        dia: diaEscolhido?.nome || "",
-        pago: pagamento === "Pix",
-        concluido: false,
-        dataCriacao: new Date().toISOString(),
-        itens
-      }
 
-      await addDoc(collection(db, "pedidos"), payloadPedido)
-      setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
-      setCodigoPix("")
-      setStatusPix("normal")
-      setPixCopiado(false)
-      setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+      const pedidoExistente = await buscarPedidoAtivoMesmaPessoa(nome.trim(), telefone.trim())
+
+      if (pedidoExistente) {
+        const itensCombinados = mergeItens(pedidoExistente.data.itens || {}, itens)
+
+        const itensOnly = Object.fromEntries(
+          Object.entries(itensCombinados).filter(([_, qtd]) => (qtd as number) > 0)
+        )
+
+        let novoSubtotal = 0
+        let qtdComidas = 0
+        const qtdCafes = itensOnly.cafe || 0
+
+        Object.entries(itensOnly).forEach(([chave, qtd]) => {
+          const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+          novoSubtotal += preco * qtd
+          if (chave !== "cafe") qtdComidas += qtd
+        })
+
+        let descontoCombo = 0
+        if (qtdComidas > 0 && qtdCafes > 0) {
+          const totalCombos = Math.min(qtdComidas, qtdCafes)
+          let cafesUsados = 0
+          for (const [chave, qtd] of Object.entries(itensOnly)) {
+            if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
+              const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+              const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
+              const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
+              descontoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
+              cafesUsados += qtdUsar
+            }
+          }
+        }
+
+        const novoTotal = Math.max(0, novoSubtotal - descontoCombo)
+
+        const observacoesItemCombinadas = {
+          ...(pedidoExistente.data.observacoesItem || {}),
+          ...Object.fromEntries(
+            Object.entries(observacoesItem).filter(([_, arr]) => arr && (arr as string[]).length > 0 && (arr as string[]).some(o => o.trim()))
+          )
+        }
+
+        await updateDoc(doc(db, "pedidos", pedidoExistente.id), {
+          itens: itensOnly,
+          valorTotal: novoTotal,
+          observacao: observacao.trim() || pedidoExistente.data.observacao || "",
+          observacoesItem: observacoesItemCombinadas,
+          horario: horario || pedidoExistente.data.horario || "",
+          dia: diaEscolhido?.nome || pedidoExistente.data.dia || "",
+          pagamento: pagamento || pedidoExistente.data.pagamento || "Pix",
+          troco: trocoCalculado > 0 ? trocoCalculado : pedidoExistente.data.troco || 0,
+          endereco: enderecoCompleto || pedidoExistente.data.endereco || "",
+        })
+
+        notificarPedido({
+          nome: nome.trim(),
+          horario: horario || pedidoExistente.data.horario || "",
+          valorTotal: novoTotal,
+          pedidoId: pedidoExistente.id,
+        })
+
+        setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
+        setEtapa("sucesso")
+      } else {
+        const payloadPedido = {
+          nome: nome.trim(),
+          telefone: telefone.trim(),
+          endereco: enderecoCompleto,
+          observacao: observacao.trim(),
+          observacoesItem,
+          pagamento,
+          troco: trocoCalculado,
+          valorTotal: valorTotalFinal,
+          horario,
+          dia: diaEscolhido?.nome || "",
+          pago: pagamento === "Pix",
+          concluido: false,
+          dataCriacao: new Date().toISOString(),
+          itens
+        }
+
+        const docRef = await addDoc(collection(db, "pedidos"), payloadPedido)
+
+        notificarPedido({
+          nome: nome.trim(),
+          horario,
+          valorTotal: valorTotalFinal,
+          pedidoId: docRef.id,
+        })
+
+        setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
+        setCodigoPix("")
+        setStatusPix("normal")
+        setPixCopiado(false)
+        setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+      }
     } catch {
       alert("Erro ao enviar pedido. Tente novamente.")
     } finally {

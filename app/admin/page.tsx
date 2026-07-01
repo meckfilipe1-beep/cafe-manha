@@ -13,9 +13,12 @@ import {
   addDoc,
   setDoc,
   getDoc,
-  getDocs
+  getDocs,
+  where
 } from "firebase/firestore";
+import { buscarPedidoAtivoMesmaPessoa, mergeItens } from "@/lib/pedidoUtils";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { notificarPedido } from "@/lib/notificarPedido";
 
 // Funções auxiliares fora do componente
 const tocarSomPedido = () => {
@@ -43,14 +46,22 @@ const configurarNotificacoes = async () => {
   }
 };
 
-const inicializarFirebasePush = async () => {
+const inicializarFirebasePush = async (usuario: any) => {
   if (typeof window === "undefined" || !(window as any).Capacitor) return;
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     const permissao = await PushNotifications.requestPermissions();
     if (permissao.receive === 'granted') await PushNotifications.register();
-    await PushNotifications.addListener('registration', (token) => {
+    await PushNotifications.addListener('registration', async (token) => {
       console.log("Token FCM:", token.value);
+      if (usuario) {
+        await setDoc(doc(db, "admin_tokens", usuario.uid), {
+          token: token.value,
+          email: usuario.email,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log("Token salvo no Firestore!");
+      }
     });
     await PushNotifications.addListener('registrationError', (err) => {
       console.error("Erro no Push:", err);
@@ -153,6 +164,7 @@ export default function AdminPainel() {
   const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false);
   const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
   const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
+  const [pedidoParaExcluir, setPedidoParaExcluir] = useState<any | null>(null);
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
 
@@ -196,7 +208,7 @@ export default function AdminPainel() {
   useEffect(() => {
     if (!usuarioLogado) return;
     configurarNotificacoes();
-    inicializarFirebasePush();
+    inicializarFirebasePush(usuarioLogado);
   }, [usuarioLogado]);
 
   useEffect(() => {
@@ -368,6 +380,12 @@ export default function AdminPainel() {
     return p ? `${p.icone} ${p.nome}` : nomeChave;
   }
 
+  function nomeAbreviado(nomeCompleto: string) {
+    const partes = nomeCompleto.trim().split(/\s+/);
+    if (partes.length <= 2) return nomeCompleto.trim();
+    return `${partes[0]} ${partes[1]}`;
+  }
+
   function gerarHorarios(inicio: string, fim: string) {
     const horarios = [];
     let atual = new Date();
@@ -440,23 +458,92 @@ export default function AdminPainel() {
     try {
       setNotificacaoCaixa("⏳ Registrando pedido...");
 
-      const novoPedido = {
-        nome: nomeAvulso,
-        telefone: whatsappAvulso || "",
-        endereco: `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
-        observacao: observacaoAvulso,
-        horario: horarioAvulso,
-        pagamento: pagamentoAvulso,
-        troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : 0,
-        valorTotal: valorTotalAvulsoNumerico,
-        itens: { ...itensAvulsos },
-        statusPagamento: status === "pago" ? "pago" : "pendente",
-        concluido: status === "pago",
-        dataCriacao: new Date(),
-        abaOrigem: "avulso"
-      };
+      const itensNovos = { ...itensAvulsos };
 
-      await addDoc(collection(db, "pedidos"), novoPedido);
+      const pedidoExistente = await buscarPedidoAtivoMesmaPessoa(nomeAvulso, whatsappAvulso || "");
+
+      if (pedidoExistente) {
+        const itensCombinados = mergeItens(pedidoExistente.data.itens || {}, itensNovos);
+
+        const itensOnly = Object.fromEntries(
+          Object.entries(itensCombinados).filter(([_, qtd]) => (qtd as number) > 0)
+        );
+
+        let novoTotal = 0;
+        Object.entries(itensOnly).forEach(([chave, qtd]) => {
+          const preco = produtos.find(p => p.chave === chave)?.preco || 0;
+          novoTotal += preco * Number(qtd);
+        });
+
+        let qtdComidas = 0;
+        let qtdCafes = itensOnly.cafe || 0;
+        Object.entries(itensOnly).forEach(([key, qtd]) => {
+          if (key !== "cafe") qtdComidas += Number(qtd);
+        });
+
+        if (qtdComidas > 0 && qtdCafes > 0) {
+          const qtdCombos = Math.min(qtdComidas, qtdCafes);
+          let desconto = 0;
+          let cafesUsados = 0;
+          Object.entries(itensOnly).forEach(([key, qtd]) => {
+            if (key !== "cafe" && Number(qtd) > 0 && cafesUsados < qtdCombos) {
+              const precoItem = produtos.find(p => p.chave === key)?.preco || 0;
+              const precoCafe = produtos.find(p => p.chave === "cafe")?.preco || 0;
+              const qtdUsar = Math.min(Number(qtd), qtdCombos - cafesUsados);
+              desconto += qtdUsar * ((precoItem + precoCafe) - 10);
+              cafesUsados += qtdUsar;
+            }
+          });
+          novoTotal -= desconto;
+        }
+
+        await updateDoc(doc(db, "pedidos", pedidoExistente.id), {
+          itens: itensOnly,
+          valorTotal: Math.max(0, novoTotal),
+          observacao: observacaoAvulso || pedidoExistente.data.observacao || "",
+          horario: horarioAvulso || pedidoExistente.data.horario || "",
+          pagamento: pagamentoAvulso || pedidoExistente.data.pagamento || "Pix",
+          troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : pedidoExistente.data.troco || 0,
+          statusPagamento: status === "pago" ? "pago" : pedidoExistente.data.statusPagamento || "pendente",
+          concluido: status === "pago" ? true : pedidoExistente.data.concluido || false,
+        });
+
+        notificarPedido({
+          nome: nomeAvulso,
+          horario: horarioAvulso || pedidoExistente.data.horario || "",
+          valorTotal: Math.max(0, novoTotal),
+          pedidoId: pedidoExistente.id,
+        });
+
+        setNotificacaoCaixa(`✅ Itens agrupados ao pedido existente de ${nomeAvulso}!`);
+      } else {
+        const novoPedido = {
+          nome: nomeAvulso,
+          telefone: whatsappAvulso || "",
+          endereco: `${ruaAvulso || ""} ${numeroAvulso ? `, Nº ${numeroAvulso}` : ""} ${referenciaAvulso ? `- ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
+          observacao: observacaoAvulso,
+          horario: horarioAvulso,
+          pagamento: pagamentoAvulso,
+          troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : 0,
+          valorTotal: valorTotalAvulsoNumerico,
+          itens: itensNovos,
+          statusPagamento: status === "pago" ? "pago" : "pendente",
+          concluido: status === "pago",
+          dataCriacao: new Date(),
+          abaOrigem: "avulso"
+        };
+
+        const docRef = await addDoc(collection(db, "pedidos"), novoPedido);
+
+        notificarPedido({
+          nome: nomeAvulso,
+          horario: horarioAvulso,
+          valorTotal: valorTotalAvulsoNumerico,
+          pedidoId: docRef.id,
+        });
+
+        setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
+      }
 
       setNomeAvulso("");
       setWhatsappAvulso("");
@@ -479,7 +566,6 @@ export default function AdminPainel() {
         cafe: 0,
       });
 
-      setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
       setTimeout(() => {
         if (status === "pago") router.push("/admin?aba=historico");
         if (status === "espera") router.push("/admin?aba=pedidos");
@@ -536,6 +622,24 @@ export default function AdminPainel() {
       setNotificacaoCaixa("🟢 PEDIDO MARCADO COMO PAGO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
+    } catch (erro) { console.error(erro); }
+  }
+
+  async function marcarPagoSemConcluir(id: string) {
+    if (!usuarioLogado) return;
+    try {
+      await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pago" });
+      setNotificacaoCaixa("🟢 PAGAMENTO MARCADO!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    } catch (erro) { console.error(erro); }
+  }
+
+  async function reverterPago(id: string) {
+    if (!usuarioLogado) return;
+    try {
+      await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pendente" });
+      setNotificacaoCaixa("🟡 MOVIDO PARA PENDENTE!");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
   }
 
@@ -1097,11 +1201,9 @@ export default function AdminPainel() {
 
         {/* 🟡 LISTA DE PEDIDOS EM ANDAMENTO - HORA DESTACADA 🟡 */}
         <div className="bg-[#FFEDD5]/60 border border-orange-400/40 rounded-3xl p-8 shadow-2xl">
-         <h2 className="text-2xl font-black text-orange-700 uppercase tracking-wider mb-8 flex flex-col items-center gap-2">
-  <span className="flex items-center gap-3">
-    <span>📋</span> Pedidos em Andamento
-  </span>
-  <span className="text-3xl font-black text-orange-800">({pedidosAtivos.length})</span>
+         <h2 className="text-xl font-black text-orange-700 uppercase tracking-wider mb-6 flex items-center justify-center gap-2">
+  <span>📋</span> Pedidos
+  <span className="text-orange-800">({pedidosAtivos.length})</span>
 </h2>
           {pedidosAtivos.length === 0 ? (
             <div className="text-center py-20 text-orange-800 font-bold uppercase text-lg">
@@ -1112,75 +1214,56 @@ export default function AdminPainel() {
               {pedidosAtivos.map((pedido) => (
                 <div 
                   key={pedido.id} 
-                  className="bg-[#FFFBEB] border border-orange-400/50 rounded-3xl p-7 hover:border-orange-500 hover:scale-[1.01] transition-all shadow-lg"
+                  className="bg-[#FFFBEB] border border-orange-400/50 rounded-3xl p-6 hover:border-orange-500 hover:scale-[1.01] transition-all shadow-lg"
                 >
-                  <div className="flex justify-between items-start mb-5">
-                    <div>
-                      <h3 className="font-black text-xl uppercase text-orange-900">{pedido.nome}</h3>
-                      
-                      {/* ⏱ HORA DESTACADA AQUI ⏱ */}
-                      <p className="text-orange-700 font-black text-base mt-1 bg-orange-200/50 px-3 py-1 rounded-lg inline-block">⏱ {pedido.horario}</p>
-                    </div>
-                    <span className={`px-4 py-2 rounded-xl text-sm font-black uppercase shadow-sm ${pedido.pagamento === "Pix" ? "bg-teal-400/30 text-teal-800 border border-teal-500/40" : "bg-amber-400/30 text-amber-800 border border-amber-500/40"}`}>
-                      {pedido.pagamento}
-                    </span>
+                  <h3 className="font-black text-xl uppercase text-orange-900 text-center mb-2">
+                    {nomeAbreviado(pedido.nome)}
+                  </h3>
+
+                  <p className="text-orange-700 font-black text-base text-center mb-3">⏱ {pedido.horario}</p>
+
+                  <div className="flex justify-center mb-4">
+                    <button
+                      onClick={() => pedido.statusPagamento === "pago" ? reverterPago(pedido.id) : marcarPagoSemConcluir(pedido.id)}
+                      className={`px-6 py-2.5 rounded-xl text-sm font-black uppercase shadow-sm border transition-all ${
+                        pedido.statusPagamento === "pago"
+                          ? "bg-emerald-400/30 text-emerald-800 border-emerald-500/40 hover:bg-red-400/30 hover:text-red-800 hover:border-red-500/40"
+                          : "bg-red-400/30 text-red-800 border-red-500/40 hover:bg-emerald-400/30 hover:text-emerald-800 hover:border-emerald-500/40"
+                      }`}
+                      title="Clique para alternar"
+                    >
+                      {pedido.statusPagamento === "pago" ? "✅ Pago" : "⏳ Pendente"}
+                    </button>
                   </div>
 
-                  <p className="text-orange-900/80 text-base mb-5 font-bold">{pedido.endereco}</p>
-                  
-                  {pedido.observacao && (
-                    <p className="bg-orange-500/20 border border-orange-500/40 text-orange-800 text-sm p-4 rounded-xl mb-5 font-bold">
-                      💡 Obs: {pedido.observacao}
-                    </p>
-                  )}
-
-                      <div className="flex justify-between items-center pt-2">
-      <div className="space-y-1.5">
-        <p className="text-xl font-black text-emerald-600">R$ {pedido.valorTotal.toFixed(2)}</p>
-        {pedido.pagamento === "Dinheiro" && (() => {
-          const valorTroco = pedido.trocoPara || pedido.troco || 0;
-          if (valorTroco > 0) {
-            return (
-              <p className="text-sm font-black text-red-600 bg-red-100/60 px-2.5 py-0.5 rounded-md border border-red-400/30 inline-block shadow-sm m-0">
-                🔴 TROCO R$ {valorTroco.toFixed(2)}
-              </p>
-            );
-          }
-          if (valorTroco === 0) {
-            return (
-              <p className="text-sm font-black text-red-600 bg-red-100/60 px-2.5 py-0.5 rounded-md border border-red-400/30 inline-block shadow-sm m-0">
-                🔴 R$ SEM TROCO
-              </p>
-            );
-          }
-          return null;
-        })()}
-      </div>
-
-      <div className="flex items-center gap-2 relative">
-        <button
-          onClick={() => setPedidoDetalhado(pedido)}
-          className="px-3 py-2 bg-sky-500/20 text-sky-700 border border-sky-500/40 rounded-lg font-black text-lg hover:bg-sky-500/30 transition-all leading-none"
-          title="Ver detalhes do pedido"
-        >
-          👁️
-        </button>
-
-        <button
-          onClick={() => {
-            if (pedidoSelecionadoParaConcluir?.id === pedido.id) {
-              setPedidoSelecionadoParaConcluir(null);
-            } else {
-              setPedidoSelecionadoParaConcluir(pedido);
-              setSubmenuAcoes("principal");
-            }
-          }}
-          className="text-base font-black bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-lg px-4 py-2 shadow-md hover:bg-emerald-500/30 transition-all whitespace-nowrap uppercase leading-none"
-        >
-          OPÇÕES
-        </button>
-      </div>
-    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPedidoDetalhado(pedido)}
+                      className="flex-1 py-2.5 bg-sky-500/20 text-sky-700 border border-sky-500/40 rounded-xl font-black text-xs uppercase hover:bg-sky-500/30 transition-all"
+                    >
+                      DETALHES
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (pedidoSelecionadoParaConcluir?.id === pedido.id) {
+                          setPedidoSelecionadoParaConcluir(null);
+                        } else {
+                          setPedidoSelecionadoParaConcluir(pedido);
+                          setSubmenuAcoes("principal");
+                        }
+                      }}
+                      className="flex-1 py-2.5 bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 rounded-xl font-black text-xs uppercase hover:bg-emerald-500/30 transition-all"
+                    >
+                      OPÇÕES
+                    </button>
+                    <button
+                      onClick={() => setPedidoParaExcluir(pedido)}
+                      className="w-10 h-10 bg-red-400/20 text-red-600 border border-red-400/40 rounded-xl flex items-center justify-center text-sm hover:bg-red-400/40 transition-all flex-shrink-0"
+                      title="Excluir pedido"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1859,10 +1942,12 @@ Agradecemos a preferência.`;
           )}
         </div>
 
-        {pedidoDetalhado.pagamento === "Dinheiro" && pedidoDetalhado.troco > 0 && (
+        {pedidoDetalhado.pagamento === "Dinheiro" && (
           <div className="bg-amber-50 rounded-2xl p-4 border-2 border-amber-300 text-center">
             <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide">Troco</p>
-            <p className="text-xl font-black text-amber-700">R$ {pedidoDetalhado.troco.toFixed(2)}</p>
+            <p className="text-xl font-black text-amber-700">
+              {pedidoDetalhado.troco > 0 ? `R$ ${pedidoDetalhado.troco.toFixed(2)}` : "Sem Troco"}
+            </p>
           </div>
         )}
 
@@ -1892,10 +1977,15 @@ Agradecemos a preferência.`;
         const p = pedidoSelecionadoParaConcluir;
 
         if (submenuAcoes === "principal") {
+          const jaPago = p?.statusPagamento === "pago";
           return (
             <div className="space-y-3 pt-2">
               <button
-                onClick={() => setSubmenuAcoes("concluir")}
+                onClick={() => {
+                  processarDecisaoPedidoExistente(jaPago, p);
+                  setPedidoSelecionadoParaConcluir(null);
+                  setSubmenuAcoes("principal");
+                }}
                 className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 ✅ CONCLUIR
@@ -1904,43 +1994,7 @@ Agradecemos a preferência.`;
                 onClick={() => setSubmenuAcoes("zap")}
                 className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
-                📱 FUNÇÕES DO ZAP
-              </button>
-            </div>
-          );
-        }
-
-        if (submenuAcoes === "concluir") {
-          return (
-            <div className="space-y-3 pt-2">
-              <button
-                onClick={() => {
-                  processarDecisaoPedidoExistente(true, p);
-                  setSubmenuAcoes("principal");
-                  const el = document.createElement('div');
-                  el.innerText = 'PEDIDO MARCADO COMO PAGO!';
-                  el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#10b981;color:white;font-weight:900;font-size:16px;padding:16px 32px;border-radius:14px;z-index:99999;box-shadow:0 6px 16px rgba(0,0,0,0.2);border:2px solid #059669;text-transform:uppercase;letter-spacing:0.5px;';
-                  document.body.appendChild(el);
-                  setTimeout(() => el.remove(), 2800);
-                }}
-                className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
-              >
-                PAGO
-              </button>
-              <button
-                onClick={() => {
-                  processarDecisaoPedidoExistente(false, p);
-                  setSubmenuAcoes("principal");
-                }}
-                className="w-full py-5 bg-amber-400 hover:bg-amber-500 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
-              >
-                PENDENTE
-              </button>
-              <button
-                onClick={() => setSubmenuAcoes("principal")}
-                className="w-full py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-bold uppercase text-sm rounded-xl transition-all"
-              >
-                ← Voltar
+                📱 AVISOS
               </button>
             </div>
           );
@@ -1949,30 +2003,6 @@ Agradecemos a preferência.`;
         if (submenuAcoes === "zap") {
           return (
             <div className="space-y-3 pt-2">
-              <button
-                onClick={() => {
-                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
-                  const numero = p.telefone.replace(/\D/g, "");
-                  const msg = `*SAIU PARA ENTREGA*\n\nOlá ${p.nome}!\n\nSeu pedido da Tapicuz acabou de sair e em instantes chegará até você.\n\nAgradecemos a preferência.`;
-                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
-                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-                    (async () => {
-                      try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
-                      catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
-                    })();
-                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
-                  setPedidoSelecionadoParaConcluir(null);
-                  setSubmenuAcoes("principal");
-                  const el = document.createElement('div');
-                  el.innerText = 'AVISO DE SAÍDA ENVIADO!';
-                  el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f59e0b;color:white;font-weight:900;font-size:14px;padding:12px 24px;border-radius:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:2px solid #d97706;text-transform:uppercase;letter-spacing:0.5px;';
-                  document.body.appendChild(el);
-                  setTimeout(() => el.remove(), 2500);
-                }}
-                className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
-              >
-                🚀 AVISAR SAÍDA
-              </button>
               <button
                 onClick={() => {
                   if (!p.telefone) { alert("Cliente não informou telefone."); return; }
@@ -2017,6 +2047,30 @@ Agradecemos a preferência.`;
                 className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 📋 ENVIAR RESUMO
+              </button>
+              <button
+                onClick={() => {
+                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
+                  const numero = p.telefone.replace(/\D/g, "");
+                  const msg = `*SAIU PARA ENTREGA*\n\nOlá ${p.nome}!\n\nSeu pedido da Tapicuz acabou de sair e em instantes chegará até você.\n\nAgradecemos a preferência.`;
+                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                    (async () => {
+                      try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                      catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                    })();
+                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                  setPedidoSelecionadoParaConcluir(null);
+                  setSubmenuAcoes("principal");
+                  const el = document.createElement('div');
+                  el.innerText = 'AVISO DE SAÍDA ENVIADO!';
+                  el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f59e0b;color:white;font-weight:900;font-size:14px;padding:12px 24px;border-radius:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:2px solid #d97706;text-transform:uppercase;letter-spacing:0.5px;';
+                  document.body.appendChild(el);
+                  setTimeout(() => el.remove(), 2500);
+                }}
+                className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
+              >
+                🚀 AVISAR SAÍDA
               </button>
               <button
                 onClick={() => setSubmenuAcoes("principal")}
@@ -2119,42 +2173,75 @@ Agradecemos a preferência.`;
               📉 Nenhuma venda registrada ainda
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-[#F3F4F6]">
-                    <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Posição</th>
-                    <th className="p-3 text-xs font-black text-[#71717A] uppercase">Produto</th>
-                    <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Quantidade</th>
-                    <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Total Faturado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/50">
-                  {rankingArray.map((item, index) => (
-                    <tr key={index} className={`hover:bg-[#FFEDD5]/30 transition-colors ${index < 3 ? "font-black" : ""}`}>
-                      <td className="p-4 text-center">
-                        {index === 0 && "🥇"}
-                        {index === 1 && "🥈"}
-                        {index === 2 && "🥉"}
-                        {index > 2 && <span className="font-bold text-lg text-[#71717A]">#{index+1}</span>}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{item.icone}</span>
-                          <span className="font-bold text-lg">{item.nome}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className="font-black text-xl text-orange-400">{item.qtd}</span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <span className="font-black text-lg text-emerald-400">R$ {item.valor.toFixed(2)}</span>
-                      </td>
+            <>
+              {/* Cards no móvel, tabela no desktop */}
+              <div className="grid grid-cols-1 sm:hidden gap-3">
+                {rankingArray.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center gap-4 bg-white rounded-2xl p-4 border shadow-sm ${
+                      index === 0 ? "border-amber-400 ring-2 ring-amber-200" :
+                      index === 1 ? "border-zinc-300 ring-2 ring-zinc-200" :
+                      index === 2 ? "border-orange-300 ring-2 ring-orange-200" :
+                      "border-[#F3F4F6]"
+                    }`}
+                  >
+                    <div className="text-2xl w-10 text-center flex-shrink-0">
+                      {index === 0 && "🥇"}
+                      {index === 1 && "🥈"}
+                      {index === 2 && "🥉"}
+                      {index > 2 && <span className="font-black text-base text-[#71717A]">#{index + 1}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="text-2xl flex-shrink-0">{item.icone}</span>
+                      <span className="font-bold text-sm truncate">{item.nome}</span>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-black text-lg text-orange-500">{item.qtd}</div>
+                      <div className="text-xs font-bold text-emerald-600">R$ {item.valor.toFixed(2)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tabela no desktop */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-[#F3F4F6]">
+                      <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Posição</th>
+                      <th className="p-3 text-xs font-black text-[#71717A] uppercase">Produto</th>
+                      <th className="p-3 text-xs font-black text-[#71717A] uppercase text-center">Quantidade</th>
+                      <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Total Faturado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {rankingArray.map((item, index) => (
+                      <tr key={index} className={`hover:bg-[#FFEDD5]/30 transition-colors ${index < 3 ? "font-black" : ""}`}>
+                        <td className="p-4 text-center">
+                          {index === 0 && "🥇"}
+                          {index === 1 && "🥈"}
+                          {index === 2 && "🥉"}
+                          {index > 2 && <span className="font-bold text-lg text-[#71717A]">#{index+1}</span>}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{item.icone}</span>
+                            <span className="font-bold text-lg">{item.nome}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className="font-black text-xl text-orange-400">{item.qtd}</span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <span className="font-black text-lg text-emerald-400">R$ {item.valor.toFixed(2)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </>
       )
@@ -2524,6 +2611,35 @@ Agradecemos a preferência.`;
         <button
           onClick={() => setModalConfirmarApagarHistorico(false)}
           className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-gray-800 rounded-xl font-black uppercase transition-all duration-200"
+        >
+          CANCELAR
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{pedidoParaExcluir && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-[#FFFAF5] border border-red-500/30 w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl text-center">
+      <span className="text-5xl block mb-2">🗑️</span>
+      <h3 className="text-lg font-black text-red-500 uppercase">Excluir Pedido?</h3>
+      <p className="text-[#71717A] font-bold text-sm">
+        Tem certeza que deseja excluir o pedido de <span className="text-orange-600">{pedidoParaExcluir.nome}</span>?
+      </p>
+      <div className="flex gap-3 pt-2">
+        <button
+          onClick={() => {
+            deletarDoHistorico(pedidoParaExcluir.id);
+            setPedidoParaExcluir(null);
+          }}
+          className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+        >
+          SIM, EXCLUIR
+        </button>
+        <button
+          onClick={() => setPedidoParaExcluir(null)}
+          className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
         >
           CANCELAR
         </button>
