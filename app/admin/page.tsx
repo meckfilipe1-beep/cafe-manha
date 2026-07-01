@@ -1075,48 +1075,42 @@ export default function AdminPainel() {
          
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[#F3F4F6]">
-                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Ícone</th>
-                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Nome do Produto</th>
-                <th className="p-3 text-xs font-black text-[#71717A] uppercase">Preço (R$)</th>
-                <th className="p-3 text-xs font-black text-[#71717A] uppercase text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/50">
-              {produtos.map((produto) => (
-                <tr 
-                  key={produto.id} 
-                  className={`transition-colors ${
-                    produto.disponivel === false 
-                      ? "bg-red-50 text-red-700 line-through opacity-70" 
-                      : "hover:bg-[#FFEDD5]/30 text-zinc-800"
-                  }`}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {produtos.map((produto) => (
+            <div
+              key={produto.id}
+              className={`rounded-2xl p-4 border transition-all ${
+                produto.disponivel === false
+                  ? "bg-red-50 border-red-300 opacity-70"
+                  : "bg-white border-orange-200 hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{produto.icone}</span>
+                  <div>
+                    <p className={`font-black text-sm uppercase ${produto.disponivel === false ? "text-red-500 line-through" : "text-[#27272A]"}`}>
+                      {produto.nome}
+                    </p>
+                    <p className={`text-lg font-black mt-0.5 ${produto.disponivel === false ? "text-red-400" : "text-emerald-500"}`}>
+                      R$ {produto.preco.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditandoProduto(produto)
+                    setNovoNome(produto.nome)
+                    setNovoPreco(produto.preco.toString())
+                    setNovoDisponivel(produto.disponivel ?? true)
+                  }}
+                  className="px-3 py-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-xl text-xs font-black uppercase hover:bg-orange-500/20 transition-all"
                 >
-                  <td className="p-3 text-xl">{produto.icone}</td>
-                  <td className="p-3 font-bold">{produto.nome}</td>
-                  <td className={`p-3 font-mono font-bold ${produto.disponivel === false ? "text-red-500" : "text-emerald-400"}`}>
-                    R$ {produto.preco.toFixed(2)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => {
-                        setEditandoProduto(produto)
-                        setNovoNome(produto.nome)
-                        setNovoPreco(produto.preco.toString())
-                        setNovoDisponivel(produto.disponivel ?? true)
-                      }}
-                      className="px-4 py-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg text-xs font-black uppercase hover:bg-orange-500/20 transition-all"
-                    >
-                      ✏️ Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ✏️
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* 🕒 CONFIGURAÇÕES DE FUNCIONAMENTO - TUDO CENTRALIZADO */}
