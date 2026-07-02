@@ -4,16 +4,22 @@ export async function notificarPedido(dados: {
   valorTotal: number
   pedidoId?: string
 }) {
+  const { nome, horario, valorTotal } = dados
+
   try {
-    const res = await fetch("/api/notificar", {
+    await fetch("/api/notificar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(dados),
     })
-    const text = await res.text()
-    if (!res.ok) console.warn("Notificação falhou:", text)
-    else return JSON.parse(text)
-  } catch (erro) {
-    console.warn("Erro ao notificar servidor:", erro)
-  }
+  } catch {}
+
+  const msg = `🆕 <b>Novo Pedido!</b>\n👤 ${nome || "Cliente"}\n⏰ ${horario || ""}\n💰 R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")}`
+  try {
+    await fetch("/api/telegram-enviar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mensagem: msg }),
+    })
+  } catch {}
 }
