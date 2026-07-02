@@ -182,6 +182,8 @@ export default function AdminPainel() {
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
   const [totalEntradasFiado, setTotalEntradasFiado] = useState(0);
+  const [chatIdTelegram, setChatIdTelegram] = useState("");
+  const [telegramTokenInput, setTelegramTokenInput] = useState("");
 
   const [nomeAvulso, setNomeAvulso] = useState("");
   const [ruaAvulso, setRuaAvulso] = useState("");
@@ -1408,6 +1410,50 @@ export default function AdminPainel() {
                 WhatsApp
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* 🤖 CONFIGURAR TELEGRAM */}
+        <div className="mt-8 border-t-2 border-blue-500/30 pt-8">
+          <div className="max-w-md mx-auto text-center space-y-4">
+            <h3 className="text-lg font-black text-blue-500 uppercase tracking-wider">
+              🤖 Notificação via Telegram
+            </h3>
+            <p className="text-xs text-zinc-500 font-bold">
+              Receba avisos de novos pedidos direto no seu Telegram.
+            </p>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-xs space-y-2">
+              <p className="font-bold text-blue-700">📋 Passo a passo:</p>
+              <ol className="text-zinc-600 space-y-1 list-decimal list-inside">
+                <li>Vá no <b>Vercel</b> &gt; Settings &gt; Environment Variables</li>
+                <li>Adicione <code className="bg-blue-100 px-1 rounded">TELEGRAM_BOT_TOKEN</code> com o token do seu bot</li>
+                <li>Depois de adicionar o token, mande <b>/start</b> pro seu bot no Telegram</li>
+                <li>Volte aqui e clique em <b>"Buscar Chat ID"</b></li>
+                <li>Copie o número e adicione como <code className="bg-blue-100 px-1 rounded">TELEGRAM_CHAT_ID</code> nas env vars do Vercel</li>
+                <li>Faça um deploy novo no Vercel e pronto!</li>
+              </ol>
+            </div>
+
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/telegram-registrar")
+                  const data = await res.json()
+                  if (data.ok) {
+                    setNotificacaoCaixa(`✅ Chat ID encontrado: ${data.chatId}. Adicione nas env vars do Vercel como TELEGRAM_CHAT_ID`)
+                  } else {
+                    setNotificacaoCaixa(`❌ ${data.erro}`)
+                  }
+                } catch {
+                  setNotificacaoCaixa("❌ Erro ao buscar chat ID")
+                }
+                setTimeout(() => setNotificacaoCaixa(null), 8000)
+              }}
+              className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-black uppercase rounded-xl text-sm tracking-wider transition-all shadow-md"
+            >
+              🔍 Buscar Chat ID
+            </button>
           </div>
         </div>
 

@@ -6,14 +6,10 @@ function botUrl(token: string) {
 
 export async function enviarTelegram(mensagem: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN
-  if (!token) return
+  const chatId = process.env.TELEGRAM_CHAT_ID
+  if (!token || !chatId) return
 
   try {
-    const { admin } = await import("./firebaseAdmin")
-    const snap = await admin.firestore().doc("configuracoes/telegram").get()
-    const chatId = snap.data()?.chatId
-    if (!chatId) return
-
     await fetch(`${botUrl(token)}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -37,9 +33,6 @@ export async function registrarChatId(token: string) {
 
     const chatId = data.result[0].message.chat.id
     const nome = data.result[0].message.chat.first_name || "Admin"
-
-    const { admin } = await import("./firebaseAdmin")
-    await admin.firestore().doc("configuracoes/telegram").set({ chatId, nome, ativo: true }, { merge: true })
 
     return { ok: true, chatId, nome }
   } catch (err: any) {
