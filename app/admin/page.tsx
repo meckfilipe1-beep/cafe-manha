@@ -178,8 +178,10 @@ export default function AdminPainel() {
   const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
   const [fiadoExpandido, setFiadoExpandido] = useState<string | null>(null);
+  const [fiadoParaExcluir, setFiadoParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
+  const [totalEntradasFiado, setTotalEntradasFiado] = useState(0);
 
   const [nomeAvulso, setNomeAvulso] = useState("");
   const [ruaAvulso, setRuaAvulso] = useState("");
@@ -267,6 +269,7 @@ export default function AdminPainel() {
         const dados = snap.data();
         setFuncionamentoAberta(dados.aberta !== undefined ? dados.aberta : true);
         setTotalDespesasAcumuladas(dados.despesas || 0);
+        setTotalEntradasFiado(dados.entradasFiado || 0);
       }
     });
     const qCaixas = query(collection(db, "historico_caixas"));
@@ -369,7 +372,7 @@ export default function AdminPainel() {
   const pedidosAtivos = pedidos.filter(p => !p.concluido);
   const pedidosPendentes = pedidos.filter(p => p.concluido && p.statusPagamento === "pendente");
   const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago");
-  const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0);
+  const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0) + totalEntradasFiado;
   const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
   const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
   const saldoLiquidoAtual = faturamentoTotal - totalDespesasAcumuladas;
@@ -779,6 +782,20 @@ export default function AdminPainel() {
     }
   }
 
+  async function confirmarExcluirFiado() {
+    if (!usuarioLogado || !fiadoParaExcluir) return;
+    try {
+      await deleteDoc(doc(db, "fiados", fiadoParaExcluir.id));
+      setNotificacaoCaixa(`🗑️ Conta fiada de ${fiadoParaExcluir.nome} excluída`);
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (erro) {
+      console.error(erro);
+      setNotificacaoCaixa("❌ Erro ao excluir fiado");
+      setTimeout(() => setNotificacaoCaixa(null), 2000);
+    }
+    setFiadoParaExcluir(null);
+  }
+
   async function registrarPagamentoFiado(pessoaId: string, valorPago: number) {
     if (!usuarioLogado || !valorPago || valorPago <= 0) return;
     try {
@@ -797,6 +814,10 @@ export default function AdminPainel() {
         ],
         ultimaAtualizacao: new Date().toISOString(),
       });
+
+      const novaEntradaFiado = totalEntradasFiado + valorPago;
+      setTotalEntradasFiado(novaEntradaFiado);
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { entradasFiado: novaEntradaFiado }, { merge: true });
 
       if (novoTotal <= 0) {
         if (dados.pedidos) {
@@ -891,6 +912,7 @@ export default function AdminPainel() {
       const despesas = Number(totalDespesasAcumuladas || 0);
       const saldoLiquido = faturamento - despesas;
 
+      const entradaFiado = Number(totalEntradasFiado || 0);
       const dadosFechamento = {
         tipo: "fechamento_turno",
         data: new Date().toISOString(),
@@ -899,7 +921,8 @@ export default function AdminPainel() {
         totalPix: pix,
         totalDinheiro: dinheiro,
         despesas: despesas,
-        saldoLiquido: saldoLiquido
+        saldoLiquido: saldoLiquido,
+        totalEntradasFiado: entradaFiado
       };
 
       await addDoc(collection(db, "historico_caixas"), dadosFechamento);
@@ -908,9 +931,10 @@ export default function AdminPainel() {
       const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
       await Promise.all(promessasDelecao);
 
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, entradasFiado: 0 }, { merge: true });
 
       setTotalDespesasAcumuladas(0);
+      setTotalEntradasFiado(0);
       setModalConfirmarTurno(false);
       setModalSalvarTurno(false);
 
@@ -938,9 +962,10 @@ export default function AdminPainel() {
       const promessasFiados = snapFiados.docs.map(d => deleteDoc(doc(db, "fiados", d.id)));
       await Promise.all(promessasFiados);
 
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, entradasFiado: 0 }, { merge: true });
 
       setTotalDespesasAcumuladas(0);
+      setTotalEntradasFiado(0);
       setModalConfirmarZerarTudo(false);
       setAbaAtiva("pedidos");
 
@@ -1911,7 +1936,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
             <div className="grid grid-cols-3 gap-3">
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                disabled={valorTotalAvulsoNumerico <= 0}
                 onClick={() => { setStatusAvulsoSelecionado("pago"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
@@ -1919,7 +1944,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               </button>
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                disabled={valorTotalAvulsoNumerico <= 0}
                 onClick={() => { setStatusAvulsoSelecionado("espera"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
@@ -1927,7 +1952,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               </button>
               <button
                 type="button"
-                disabled={!funcionamentoAberta || valorTotalAvulsoNumerico <= 0}
+                disabled={valorTotalAvulsoNumerico <= 0}
                 onClick={() => { setStatusAvulsoSelecionado("fiado"); setMostrarResumoFinalAvulso(true); }}
                 className="py-3 bg-purple-500 hover:bg-purple-600 text-white font-black text-xs uppercase rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
               >
@@ -2146,7 +2171,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 <span className="text-xl">👤</span>
                 <h3 className="font-black text-base uppercase text-[#27272A]">{pessoa.nome}</h3>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <span className="text-lg font-black text-red-500">R$ {(pessoa.totalDevido || 0).toFixed(2)}</span>
                 <span className={`text-zinc-400 transition-transform text-xs ${fiadoExpandido === pessoa.id ? "rotate-180" : ""}`}>
                   ▼
@@ -2196,6 +2221,18 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   </div>
                 </div>
 
+                {pessoa.pagamentos?.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1">
+                    <p className="text-xs font-black text-blue-600 uppercase mb-1">Histórico de Pagamentos</p>
+                    {pessoa.pagamentos.map((pg: any, i: number) => (
+                      <div key={i} className="flex justify-between text-xs font-bold">
+                        <span className="text-blue-700">{new Date(pg.data).toLocaleDateString("pt-BR")} {new Date(pg.data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                        <span className="text-emerald-600">R$ {(pg.valor || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => {
@@ -2221,6 +2258,16 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                     className="flex-1 px-3 py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-xs font-black uppercase hover:bg-blue-500/20 transition-all"
                   >
                     💰 Receber
+                  </button>
+                </div>
+
+                <div className="flex justify-center pt-1">
+                  <button
+                    onClick={() => setFiadoParaExcluir({ id: pessoa.id, nome: pessoa.nome })}
+                    className="px-4 py-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl text-xs font-black uppercase flex items-center gap-1"
+                    title="Excluir conta fiada"
+                  >
+                    🗑️ Excluir
                   </button>
                 </div>
               </div>
@@ -2268,6 +2315,33 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
           className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white font-black uppercase text-sm rounded-xl transition-all disabled:opacity-50"
         >
           💰 Receber
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 🗑️ MODAL EXCLUIR FIADO */}
+{fiadoParaExcluir && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-[#FFFAF5] border border-red-500/30 w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl text-center">
+      <span className="text-5xl block mb-2">🗑️</span>
+      <h3 className="text-lg font-black text-red-500 uppercase">Excluir Conta Fiada?</h3>
+      <p className="text-[#71717A] font-bold text-sm">
+        Tem certeza que deseja excluir a conta fiada de <span className="text-orange-600">{fiadoParaExcluir.nome}</span>?
+      </p>
+      <div className="flex gap-3 pt-2">
+        <button
+          onClick={confirmarExcluirFiado}
+          className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+        >
+          SIM, EXCLUIR
+        </button>
+        <button
+          onClick={() => setFiadoParaExcluir(null)}
+          className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
+        >
+          CANCELAR
         </button>
       </div>
     </div>
@@ -2744,6 +2818,15 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         </div>
       </div>
 
+      {totalEntradasFiado > 0 && (
+        <div className="mb-6">
+          <div className="bg-[#FFFFFF] border border-purple-500/30 rounded-2xl p-4 text-center">
+            <p className="text-xs font-black text-purple-600 uppercase mb-1">Entradas de Fiado</p>
+            <p className="text-xl font-black text-purple-700">R$ {totalEntradasFiado.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
       {/* ✅ SÓ ESSA PARTE FOI ALTERADA: CAMPO E BOTÃO DE DESPESA ✅ */}
       <form onSubmit={lancarDespesaSimples} className="mb-6 p-4 bg-[#FFFFFF] border border-[#F3F4F6] rounded-xl">
         <h3 className="text-sm font-black text-red-400 uppercase mb-3 text-center">Lançar Despesa</h3>
@@ -2844,6 +2927,16 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   </p>
                 </div>
 
+                {/* 4.5 ENTRADAS DE FIADO */}
+                {historicoCaixas.some(c => c.totalEntradasFiado) && (
+                  <div className="col-span-2 text-center p-2 bg-purple-100 rounded-lg border border-purple-200">
+                    <p className="text-xs font-black text-purple-800 uppercase mb-1">Entradas de Fiado</p>
+                    <p className="text-lg font-black text-purple-900">
+                      R$ {historicoCaixas.reduce((soma, c) => soma + (c.totalEntradasFiado || 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
                 {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-500 shadow-sm">
                   <p className="text-sm font-black text-emerald-800 uppercase mb-1">Valor Total</p>
@@ -2893,6 +2986,14 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   <p className="text-xs font-black text-red-700 uppercase mb-1">Despesas</p>
                   <p className="text-base font-black text-red-800">R$ {(caixa.despesas || 0).toFixed(2)}</p>
                 </div>
+
+                {/* 4.5 ENTRADAS DE FIADO */}
+                {(caixa.totalEntradasFiado || 0) > 0 && (
+                  <div className="col-span-2 text-center p-2 bg-purple-50 rounded-lg border border-purple-100">
+                    <p className="text-xs font-black text-purple-700 uppercase mb-1">Entradas de Fiado</p>
+                    <p className="text-base font-black text-purple-800">R$ {(caixa.totalEntradasFiado || 0).toFixed(2)}</p>
+                  </div>
+                )}
 
                 {/* 5. VALOR TOTAL - VERDE FORTE, DESTAQUE E FONTE GRANDE */}
                 <div className="col-span-2 text-center p-3 bg-emerald-100 rounded-lg border-2 border-emerald-400 shadow-sm">
