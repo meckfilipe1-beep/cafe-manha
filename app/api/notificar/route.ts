@@ -22,52 +22,33 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { nome, horario, valorTotal, pedidoId } = body
 
-  let totalAtivos = 0
-  let enviadosFcm = 0
-  let falhasFcm = 0
+  // 🚀 Telegram primeiro - SEM ESPERAR
+  const msgTelegram = `🆕 <b>Novo Pedido!</b>\n👤 ${nome || "Cliente"}\n⏰ ${horario || ""}\n💰 R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")}`
+  enviarTelegram(msgTelegram)
 
+  // 🔄 Firebase em segundo plano
+  let totalAtivos = 0, enviadosFcm = 0, falhasFcm = 0
   try {
     const firestore = initAdmin().firestore()
     try {
       const pedidosSnapshot = await firestore.collection("pedidos").where("concluido", "==", false).get()
       totalAtivos = pedidosSnapshot.size
     } catch {}
-
     try {
       const tokensSnapshot = await firestore.collection("admin_tokens").get()
       const tokens: string[] = []
-      tokensSnapshot.forEach((doc) => {
-        const data = doc.data()
-        if (data.token) tokens.push(data.token)
-      })
-
+      tokensSnapshot.forEach(doc => { const d = doc.data(); if (d.token) tokens.push(d.token) })
       if (tokens.length > 0) {
-        const response = await admin.messaging().sendEachForMulticast({
+        const r = await admin.messaging().sendEachForMulticast({
           tokens,
-          notification: {
-            title: `Novo Pedido - ${nome || "Cliente"}`,
-            body: `${horario || ""} | R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")} | ${totalAtivos} pedido(s) ativo(s)`,
-          },
-          android: {
-            notification: {
-              channelId: "pedidos-alta",
-              priority: "high",
-              sound: "default",
-            },
-          },
-          data: {
-            pedidoId: pedidoId || "",
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
-          },
+          notification: { title: `Novo Pedido - ${nome || "Cliente"}`, body: `${horario || ""} | R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")} | ${totalAtivos} pedido(s) ativo(s)` },
+          android: { notification: { channelId: "pedidos-alta", priority: "high", sound: "default" } },
+          data: { pedidoId: pedidoId || "", click_action: "FLUTTER_NOTIFICATION_CLICK" },
         })
-        enviadosFcm = response.successCount
-        falhasFcm = response.failureCount
+        enviadosFcm = r.successCount; falhasFcm = r.failureCount
       }
     } catch {}
   } catch {}
-
-  const msgTelegram = `🆕 <b>Novo Pedido!</b>\n👤 ${nome || "Cliente"}\n⏰ ${horario || ""}\n💰 R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")}\n📦 ${totalAtivos} pedido(s) ativo(s)`
-  enviarTelegram(msgTelegram)
 
   return NextResponse.json({ ok: true, enviados: enviadosFcm, falhas: falhasFcm })
 }
