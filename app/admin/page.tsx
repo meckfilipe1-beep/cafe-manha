@@ -23,6 +23,15 @@ import { notificarPedido } from "@/lib/notificarPedido";
 // Funções auxiliares fora do componente
 const tocarSomPedido = () => {
   if (typeof window === "undefined") return;
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification("🆕 Novo Pedido!", {
+        body: "Um novo pedido acabou de chegar!",
+        icon: "/icons/icon-192.webp",
+        tag: "novo-pedido",
+      });
+    } catch {}
+  }
   const audio = new Audio('/pedido.mp3');
   audio.play().catch(() => {});
 };
@@ -194,6 +203,9 @@ export default function AdminPainel() {
     cafe: 0,
   });
 
+  const [modoValorLivreAvulso, setModoValorLivreAvulso] = useState(false);
+  const [valorLivreAvulso, setValorLivreAvulso] = useState("");
+
   const ultimoTotalPedidos = useRef(0);
 
   // ✅ TODOS OS EFEITOS AQUI, ANTES DE QUALQUER RETURN CONDICIONAL
@@ -213,6 +225,9 @@ export default function AdminPainel() {
     if (!usuarioLogado) return;
     configurarNotificacoes();
     inicializarFirebasePush(usuarioLogado);
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
   }, [usuarioLogado]);
 
   useEffect(() => {
@@ -293,6 +308,11 @@ export default function AdminPainel() {
   }, [usuarioLogado]);
 
   useEffect(() => {
+    if (modoValorLivreAvulso) {
+      const valor = parseFloat(valorLivreAvulso.replace(",", ".")) || 0;
+      setValorTotalAvulso(valor.toFixed(2));
+      return;
+    }
     let subtotal = 0;
     let qtdComidas = 0;
     let qtdCafes = itensAvulsos.cafe;
@@ -317,7 +337,7 @@ export default function AdminPainel() {
       subtotal -= desconto;
     }
     setValorTotalAvulso(subtotal.toFixed(2));
-  }, [itensAvulsos, produtos]);
+  }, [itensAvulsos, produtos, modoValorLivreAvulso, valorLivreAvulso]);
 
   // ==============================================
   // 2. RETORNOS CONDICIONAIS SOMENTE DEPOIS DE TODOS OS HOOKS
@@ -478,7 +498,7 @@ export default function AdminPainel() {
       const itensNovos = { ...itensAvulsos };
       let pedidoIdParaFiado: string | null = null;
 
-      const pedidoExistente = await buscarPedidoAtivoMesmaPessoa(nomeAvulso, whatsappAvulso || "");
+      const pedidoExistente = modoValorLivreAvulso ? null : await buscarPedidoAtivoMesmaPessoa(nomeAvulso, whatsappAvulso || "");
 
       if (pedidoExistente) {
         const itensCombinados = mergeItens(pedidoExistente.data.itens || {}, itensNovos);
@@ -606,6 +626,8 @@ export default function AdminPainel() {
       setHorarioAvulso("0:00");
       setPagamentoAvulso("Pix");
       setTrocoParaAvulso("");
+      setModoValorLivreAvulso(false);
+      setValorLivreAvulso("");
       setItensAvulsos({
         tapiocaMolhada: 0,
         tapiocaManteiga: 0,
@@ -824,7 +846,9 @@ export default function AdminPainel() {
   }
 
   function executarCopiaResumo() {
-    const itensTxt = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
+    const itensTxt = modoValorLivreAvulso
+      ? "• VALOR PERSONALIZADO"
+      : Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => `• ${qtd}x ${formatarNomeItem(key)}`).join("\n");
     const textoFinal = `━━━━━━━━━━━━━━━━━━\nTAPICUZ\n\nCliente: ${nomeAvulso || "Não informado"}\nHorário: ${horarioAvulso}\n\nEntrega:\n${enderecoCompletoConstruido}\n\nItens:\n${itensTxt || "Nenhum item selecionado"}\n${observacaoPedido ? `Observação:\n${observacaoPedido}\n` : ""}Pagamento:\n${pagamentoAvulso.toUpperCase()}\n\nTotal:\nR$ ${valorTotalAvulso}\n${pagamentoAvulso === "Dinheiro" && trocoAvulsoCalculado > 0 ? `Troco: R$ ${trocoAvulsoCalculado.toFixed(2).replace(".", ",")}\n` : ""}━━━━━━━━━━━━━━━━━━`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(textoFinal).then(() => setMostrarModalCopiado(true)).catch(err => console.error("Erro na cópia", err));
@@ -834,10 +858,12 @@ export default function AdminPainel() {
   }
 
   function gerarResumoPedidoWhatsApp() {
-    const itens = Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => {
-      const prod = produtos.find(p => p.chave === key);
-      return `• ${qtd}x ${prod?.nome || key} - R$ ${(prod?.preco || 0) * Number(qtd)}`;
-    }).join("\n");
+    const itens = modoValorLivreAvulso
+      ? "• VALOR PERSONALIZADO"
+      : Object.entries(itensAvulsos).filter(([_, qtd]) => qtd > 0).map(([key, qtd]) => {
+        const prod = produtos.find(p => p.chave === key);
+        return `• ${qtd}x ${prod?.nome || key} - R$ ${(prod?.preco || 0) * Number(qtd)}`;
+      }).join("\n");
     return `Olá ${nomeAvulso || "Cliente"}.\nSeu pedido da Tapicuz foi recebido com sucesso!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${(nomeAvulso || "Não informado").toUpperCase()}\n*ENDEREÇO:* ${enderecoCompletoConstruido}\n${observacaoPedido ? `*OBSERVAÇÃO:* ${observacaoPedido}\n` : ""}*HORÁRIO:* ${horarioAvulso}\n*PAGAMENTO:* ${pagamentoAvulso}\n----------------------------------------\n*ITENS DO PEDIDO*\n${itens || "Nenhum item selecionado"}\n----------------------------------------\n*VALOR TOTAL:* R$ ${valorTotalAvulso}\n\nAgradecemos  a preferência! DEUS ABENÇOE`;
   }
 
@@ -1590,6 +1616,118 @@ export default function AdminPainel() {
             )}
           </div>
 
+        </div>
+
+        {/* 🛒 PRODUTOS E VALOR TOTAL */}
+        <div className="space-y-4">
+          <div className="flex justify-center gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setModoValorLivreAvulso(false)}
+              className={`px-4 py-2 rounded-xl font-black text-xs uppercase border-2 transition-all tracking-wider ${
+                !modoValorLivreAvulso
+                  ? "bg-orange-500 text-white border-orange-600 shadow-md"
+                  : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"
+              }`}
+            >
+              🛒 Produtos
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoValorLivreAvulso(true)}
+              className={`px-4 py-2 rounded-xl font-black text-xs uppercase border-2 transition-all tracking-wider ${
+                modoValorLivreAvulso
+                  ? "bg-orange-500 text-white border-orange-600 shadow-md"
+                  : "bg-[#FFFFFF] text-[#71717A] border-[#F3F4F6]"
+              }`}
+            >
+              💲 Valor Livre
+            </button>
+          </div>
+
+          {modoValorLivreAvulso ? (
+            <div className="bg-[#FFFBEB] border border-orange-400/40 rounded-xl p-5 space-y-3">
+              <label className="block text-xs font-black text-[#71717A] uppercase mb-2 text-center">
+                Valor Personalizado
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={valorLivreAvulso || ""}
+                onChange={(e) => {
+                  const valor = e.target.value.replace(/\D/g, "");
+                  if (!valor) {
+                    setValorLivreAvulso("");
+                    return;
+                  }
+                  const valorNumerico = Number(valor) / 100;
+                  setValorLivreAvulso(valorNumerico.toFixed(2).replace(".", ","));
+                }}
+                placeholder="0,00"
+                className="w-full bg-[#FFFFFF] border-2 border-orange-500/50 rounded-xl p-4 text-center text-3xl font-black text-emerald-600 focus:outline-none focus:border-orange-500"
+              />
+              <p className="text-[10px] text-center text-[#71717A] font-bold uppercase">
+                Digite o valor desejado para lançar como pedido
+              </p>
+            </div>
+          ) : (
+            <>
+              <h3 className="text-sm font-black text-orange-400 uppercase tracking-wider text-center">Produtos</h3>
+              
+              {produtos.map((produto) => {
+                const quantidade = (itensAvulsos as any)[produto.chave] || 0;
+                const selecionado = quantidade > 0;
+                return (
+                  <div 
+                    key={produto.id} 
+                    className={`flex items-center justify-between border rounded-xl p-4 transition-all ${
+                  produto.disponivel !== false 
+                    ? (selecionado ? "bg-amber-100/70 border-amber-400 shadow-md" : "bg-[#FFFFFF] border-[#F3F4F6]") 
+                    : "border-red-800/40 opacity-40 grayscale bg-[#FFFFFF]"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{produto.icone}</span>
+                  <div>
+                    <p className={`font-bold ${produto.disponivel !== false ? "text-[#27272A]" : "text-[#71717A] line-through"}`}>
+                      {produto.nome}
+                      {selecionado && <span className="text-orange-600 font-black text-sm ml-2">✅ SELECIONADO</span>}
+                    </p>
+                    <p className={`text-lg font-black tracking-wider mt-1 ${produto.disponivel !== false ? "text-emerald-600 drop-shadow-sm" : "text-zinc-500"}`}>
+                      R$ {produto.preco.toFixed(2)}
+                    </p>
+                    {produto.disponivel === false && (
+                      <span className="text-[10px] font-black text-red-400 uppercase mt-1 block">❌ Indisponível</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => alterarQtdAvulso(produto.chave, -1)}
+                    disabled={produto.disponivel === false}
+                    className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center font-black text-lg">
+                    {quantidade}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => alterarQtdAvulso(produto.chave, 1)}
+                    disabled={produto.disponivel === false}
+                    className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+            </>
+          )}
+
           {/* 💳 FORMA DE PAGAMENTO */}
           <div>
             <label className="block text-xs font-black text-[#71717A] uppercase mb-2 text-center">Forma de Pagamento</label>
@@ -1654,63 +1792,6 @@ export default function AdminPainel() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* 🛒 PRODUTOS E VALOR TOTAL */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-black text-orange-400 uppercase tracking-wider text-center">Produtos</h3>
-          
-          {produtos.map((produto) => {
-            const quantidade = (itensAvulsos as any)[produto.chave] || 0;
-            const selecionado = quantidade > 0;
-            return (
-              <div 
-                key={produto.id} 
-                className={`flex items-center justify-between border rounded-xl p-4 transition-all ${
-                  produto.disponivel !== false 
-                    ? (selecionado ? "bg-amber-100/70 border-amber-400 shadow-md" : "bg-[#FFFFFF] border-[#F3F4F6]") 
-                    : "border-red-800/40 opacity-40 grayscale bg-[#FFFFFF]"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{produto.icone}</span>
-                  <div>
-                    <p className={`font-bold ${produto.disponivel !== false ? "text-[#27272A]" : "text-[#71717A] line-through"}`}>
-                      {produto.nome}
-                      {selecionado && <span className="text-orange-600 font-black text-sm ml-2">✅ SELECIONADO</span>}
-                    </p>
-                    <p className={`text-lg font-black tracking-wider mt-1 ${produto.disponivel !== false ? "text-emerald-600 drop-shadow-sm" : "text-zinc-500"}`}>
-                      R$ {produto.preco.toFixed(2)}
-                    </p>
-                    {produto.disponivel === false && (
-                      <span className="text-[10px] font-black text-red-400 uppercase mt-1 block">❌ Indisponível</span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => alterarQtdAvulso(produto.chave, -1)}
-                    disabled={produto.disponivel === false}
-                    className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    −
-                  </button>
-                  <span className="w-10 text-center font-black text-lg">
-                    {quantidade}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => alterarQtdAvulso(produto.chave, 1)}
-                    disabled={produto.disponivel === false}
-                    className="w-8 h-8 bg-[#FFEDD5] hover:bg-[#FFF7ED] rounded-lg flex items-center justify-center font-black text-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            )
-          })}
 
           {/* ✅ VALOR TOTAL */}
           <div className="mt-6 p-5 bg-[#FFFBEB] border border-emerald-400/40 rounded-xl shadow-sm">
@@ -1747,15 +1828,20 @@ export default function AdminPainel() {
                     mensagem += `*ITENS DO PEDIDO*\n`;
 
                     let temItens = false;
-                    Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
-                      if (qtd > 0) {
-                        const prod = produtos.find(p => p.chave === chave);
-                        if (prod) {
-                          mensagem += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
-                          temItens = true;
+                    if (modoValorLivreAvulso) {
+                      mensagem += `• VALOR PERSONALIZADO\n`;
+                      temItens = true;
+                    } else {
+                      Object.entries(itensAvulsos).forEach(([chave, qtd]: any) => {
+                        if (qtd > 0) {
+                          const prod = produtos.find(p => p.chave === chave);
+                          if (prod) {
+                            mensagem += `• ${qtd}x ${prod.nome} - R$ ${(prod.preco * qtd).toFixed(2).replace(".", ",")}\n`;
+                            temItens = true;
+                          }
                         }
-                      }
-                    });
+                      });
+                    }
 
                     if (!temItens) {
                       mensagem += `• NENHUM ITEM CADASTRADO\n`;
@@ -1895,7 +1981,9 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 
         <div className="bg-white rounded-2xl p-4 border-2 border-orange-200">
           <p className="text-[9px] font-medium text-zinc-400 uppercase tracking-wide mb-2">Itens</p>
-          {Object.entries(itensAvulsos).filter(([_, qtd]) => (qtd as number) > 0).length === 0 ? (
+          {modoValorLivreAvulso ? (
+            <p className="text-emerald-600 font-black text-center py-3">🎯 VALOR PERSONALIZADO</p>
+          ) : Object.entries(itensAvulsos).filter(([_, qtd]) => (qtd as number) > 0).length === 0 ? (
             <p className="text-zinc-400 font-bold text-center py-3">Nenhum item selecionado</p>
           ) : (
             <div className="space-y-2">
