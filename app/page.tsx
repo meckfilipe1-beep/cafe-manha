@@ -400,6 +400,12 @@ export default function ClientePainel() {
           horario: horario || pedidoExistente.data.horario || "",
           valorTotal: novoTotal,
           pedidoId: pedidoExistente.id,
+          itens: itensOnly,
+          pagamento: pagamento || pedidoExistente.data.pagamento || "Pix",
+          troco: trocoCalculado > 0 ? trocoCalculado : pedidoExistente.data.troco || 0,
+          endereco: enderecoCompleto || pedidoExistente.data.endereco || "",
+          telefone: telefone.trim() || pedidoExistente.data.telefone || "",
+          observacao: observacao.trim() || pedidoExistente.data.observacao || "",
         })
 
         setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
@@ -429,6 +435,12 @@ export default function ClientePainel() {
           horario,
           valorTotal: valorTotalFinal,
           pedidoId: docRef.id,
+          itens,
+          pagamento,
+          troco: trocoCalculado,
+          endereco: enderecoCompleto,
+          telefone: telefone.trim(),
+          observacao: observacao.trim(),
         })
 
         const fiadoKey = `${telefone.trim()}_${nome.trim()}`

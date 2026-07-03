@@ -558,6 +558,12 @@ export default function AdminPainel() {
           horario: horarioAvulso || pedidoExistente.data.horario || "",
           valorTotal: Math.max(0, novoTotal),
           pedidoId: pedidoExistente.id,
+          itens: itensOnly,
+          pagamento: pagamentoAvulso || pedidoExistente.data.pagamento || "Pix",
+          troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : pedidoExistente.data.troco || 0,
+          endereco: enderecoCompletoConstruido || pedidoExistente.data.endereco || "",
+          telefone: whatsappAvulso || "",
+          observacao: observacaoPedido || pedidoExistente.data.observacao || "",
         });
 
         setNotificacaoCaixa(`✅ Itens agrupados ao pedido existente de ${nomeAvulso}!`);
@@ -586,6 +592,12 @@ export default function AdminPainel() {
           horario: horarioAvulso,
           valorTotal: valorTotalAvulsoNumerico,
           pedidoId: docRef.id,
+          itens: itensNovos,
+          pagamento: pagamentoAvulso,
+          troco: trocoAvulsoCalculado,
+          endereco: enderecoCompletoConstruido,
+          telefone: whatsappAvulso || "",
+          observacao: observacaoPedido,
         });
 
         setNotificacaoCaixa(`✅ Pedido salvo como: ${status.toUpperCase()}`);
@@ -1441,7 +1453,7 @@ export default function AdminPainel() {
                   const res = await fetch("/api/telegram-registrar")
                   const data = await res.json()
                   if (data.ok) {
-                    setNotificacaoCaixa(`✅ Chat ID encontrado: ${data.chatId}. Adicione nas env vars do Vercel como TELEGRAM_CHAT_ID`)
+                    setNotificacaoCaixa(`✅ Chat ID encontrado: ${data.chatId} (${data.nome}). Uma mensagem de teste foi enviada!`)
                   } else {
                     setNotificacaoCaixa(`❌ ${data.erro}`)
                   }
@@ -1453,6 +1465,26 @@ export default function AdminPainel() {
               className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-black uppercase rounded-xl text-sm tracking-wider transition-all shadow-md"
             >
               🔍 Buscar Chat ID
+            </button>
+
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/telegram-testar")
+                  const data = await res.json()
+                  if (data.ok) {
+                    setNotificacaoCaixa("✅ Mensagem de teste enviada com sucesso!")
+                  } else {
+                    setNotificacaoCaixa(`❌ ${data.erro}`)
+                  }
+                } catch {
+                  setNotificacaoCaixa("❌ Erro ao enviar teste")
+                }
+                setTimeout(() => setNotificacaoCaixa(null), 8000)
+              }}
+              className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-black uppercase rounded-xl text-sm tracking-wider transition-all shadow-md"
+            >
+              📤 Testar Notificação
             </button>
           </div>
         </div>

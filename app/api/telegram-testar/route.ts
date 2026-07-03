@@ -19,7 +19,7 @@ export async function GET() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        text: "\u{1F514} Teste - Notificacao Telegram funcionando!",
+        text: `🔵 <b>Teste - Notificação!</b>\n👤 Cliente Teste\n⏰ 08:30\n\n📦 <b>Itens:</b>\n  2x Tapioca c/ Queijo\n  1x Café com Leite\n\n💳 <b>Pagamento:</b> Pix\n💰 <b>Total:</b> R$ 20,00`,
         parse_mode: "HTML",
       }),
     })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import admin from "firebase-admin"
 import { enviarTelegram } from "@/lib/telegram"
+import { montarMsgTelegram } from "@/lib/notificarPedido"
 
 function initAdmin() {
   if (admin.apps.length) return admin
@@ -20,10 +21,10 @@ function initAdmin() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { nome, horario, valorTotal, pedidoId } = body
+  const { nome, horario, valorTotal, pedidoId, itens, pagamento, troco, endereco, telefone, observacao } = body
 
   // 🚀 Telegram primeiro - SEM ESPERAR
-  const msgTelegram = `🆕 <b>Novo Pedido!</b>\n👤 ${nome || "Cliente"}\n⏰ ${horario || ""}\n💰 R$ ${(valorTotal || 0).toFixed(2).replace(".", ",")}`
+  const msgTelegram = montarMsgTelegram({ nome, horario, valorTotal, itens, pagamento, troco, endereco, telefone, observacao })
   enviarTelegram(msgTelegram)
 
   // 🔄 Firebase em segundo plano
