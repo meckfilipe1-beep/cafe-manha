@@ -691,7 +691,7 @@ export default function ClientePainel() {
                       current[idx] = e.target.value
                       return { ...prev, [chave]: current }
                     })}
-                    placeholder="Ex: sem cebola, bem torrado..."
+                    placeholder=""
                     className="w-full bg-[#FFFAF5] border border-amber-300 rounded-xl p-3 text-sm placeholder:text-zinc-400 focus:outline-none focus:border-orange-500"
                   />
                 </div>

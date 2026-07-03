@@ -373,7 +373,7 @@ export default function AdminPainel() {
 
   const pedidosAtivos = pedidos.filter(p => !p.concluido);
   const pedidosPendentes = pedidos.filter(p => p.concluido && p.statusPagamento === "pendente");
-  const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago");
+  const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago" && !p.estornado);
   const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0) + totalEntradasFiado;
   const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
   const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
@@ -749,6 +749,15 @@ export default function AdminPainel() {
       await deleteDoc(doc(db, "pedidos", id));
       if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
     } catch (error) { console.error(error); }
+  }
+
+  async function estornarPedido(pedido: any) {
+    if (!usuarioLogado || !pedido?.id) return;
+    if (!confirm(`Tem certeza que deseja excluir esta venda de R$ ${pedido.valorTotal?.toFixed(2)} de "${pedido.nome}"?\n\nO valor será subtraído do CAIXA GERAL.`)) return;
+    try {
+      await updateDoc(doc(db, "pedidos", pedido.id), { estornado: true });
+      if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
+    } catch (error) { console.error("Erro ao estornar pedido:", error); }
   }
 
   async function moverParaFiado(pedido: any) {
@@ -2844,12 +2853,20 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   Concluido
                 </span>
               </div>
-              <button
-                onClick={() => setPedidoDetalhado(pedido)}
-                className="px-4 py-2 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
-              >
-                Detalhes
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => estornarPedido(pedido)}
+                  className="px-3 py-2 bg-red-100 hover:bg-red-200 active:bg-red-300 rounded-lg text-xs font-bold uppercase text-red-700 transition-colors"
+                >
+                  Excluir
+                </button>
+                <button
+                  onClick={() => setPedidoDetalhado(pedido)}
+                  className="px-4 py-2 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
+                >
+                  Detalhes
+                </button>
+              </div>
             </div>
           </div>
         ))}

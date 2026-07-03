@@ -23,14 +23,34 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { nome, horario, valorTotal, pedidoId, itens, pagamento, troco, endereco, telefone, observacao } = body
 
-  // 🚀 Telegram primeiro - SEM ESPERAR
-  const msgTelegram = montarMsgTelegram({ nome, horario, valorTotal, itens, pagamento, troco, endereco, telefone, observacao })
-  enviarTelegram(msgTelegram)
+  const firestore = initAdmin().firestore()
 
-  // 🔄 Firebase em segundo plano
+  // Verificar se já notificou este pedido no Telegram (dedup)
+  let notificacaoTelegram = true
+  if (pedidoId) {
+    try {
+      const pedidoRef = firestore.collection("pedidos").doc(pedidoId)
+      const pedidoSnap = await pedidoRef.get()
+      if (pedidoSnap.exists && pedidoSnap.data()?.notificadoTelegram) {
+        notificacaoTelegram = false
+      }
+    } catch {}
+  }
+
+  // 🚀 Telegram - só envia se ainda não foi notificado
+  if (notificacaoTelegram) {
+    const msgTelegram = montarMsgTelegram({ nome, horario, valorTotal, itens, pagamento, troco, endereco, telefone, observacao })
+    await enviarTelegram(msgTelegram)
+
+    // Marcar como notificado no Firestore (não bloquear a resposta)
+    if (pedidoId) {
+      firestore.collection("pedidos").doc(pedidoId).update({ notificadoTelegram: true }).catch(() => {})
+    }
+  }
+
+  // 🔄 FCM (Firebase Cloud Messaging)
   let totalAtivos = 0, enviadosFcm = 0, falhasFcm = 0
   try {
-    const firestore = initAdmin().firestore()
     try {
       const pedidosSnapshot = await firestore.collection("pedidos").where("concluido", "==", false).get()
       totalAtivos = pedidosSnapshot.size
@@ -51,5 +71,5 @@ export async function POST(req: NextRequest) {
     } catch {}
   } catch {}
 
-  return NextResponse.json({ ok: true, enviados: enviadosFcm, falhas: falhasFcm })
+  return NextResponse.json({ ok: true, enviados: enviadosFcm, falhas: falhasFcm, notificacaoTelegram })
 }
