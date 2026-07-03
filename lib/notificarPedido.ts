@@ -58,11 +58,4 @@ export async function notificarPedido(dados: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(dados),
   })
-
-  const msg = montarMsgTelegram({ nome, horario, valorTotal, itens, pagamento, troco, endereco, telefone, observacao })
-  fetch("/api/telegram-enviar", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mensagem: msg }),
-  })
 }
