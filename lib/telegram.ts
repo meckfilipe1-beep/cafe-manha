@@ -24,17 +24,12 @@ export async function registrarChatId(token: string) {
   if (!token) return { ok: false, erro: "Token não informado" }
 
   try {
-    // Tenta buscar a última atualização sem consumi-la (offset=-1)
-    let res = await fetch(`${botUrl(token)}/getUpdates?offset=-1&limit=1`, { cache: "no-store" })
-    let data = await res.json()
+    const res = await fetch(`${botUrl(token)}/getUpdates?limit=1`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    })
+    const data = await res.json()
 
-    // Se não achou, tenta sem offset para pegar atualizações pendentes
-    if (!data.ok || !data.result?.length) {
-      res = await fetch(`${botUrl(token)}/getUpdates?limit=1`, { cache: "no-store" })
-      data = await res.json()
-    }
-
-    // Se ainda não achou, pede para o usuário enviar /start
     if (!data.ok || !data.result?.length) {
       return { ok: false, erro: "Nenhuma mensagem encontrada. Envie /start para o bot no Telegram e clique novamente." }
     }
@@ -42,14 +37,14 @@ export async function registrarChatId(token: string) {
     const chatId = data.result[0].message.chat.id
     const nome = data.result[0].message.chat.first_name || "Admin"
 
-    // Envia uma mensagem de teste para confirmar
-    await fetch(`${botUrl(token)}/sendMessage`, {
+    const msgRes = await fetch(`${botUrl(token)}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text: "✅ Chat ID encontrado! Notificações da Tapicuz ativadas.", parse_mode: "HTML" }),
     })
+    const msgData = await msgRes.json()
 
-    return { ok: true, chatId, nome }
+    return { ok: true, chatId, nome, testeEnviado: msgData.ok }
   } catch (err: any) {
     return { ok: false, erro: err.message }
   }
