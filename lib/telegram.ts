@@ -24,10 +24,7 @@ export async function registrarChatId(token: string) {
   if (!token) return { ok: false, erro: "Token não informado" }
 
   try {
-    const res = await fetch(`${botUrl(token)}/getUpdates?limit=1`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(15000),
-    })
+    const res = await fetch(`${botUrl(token)}/getUpdates?limit=1`, { cache: "no-store" })
     const data = await res.json()
 
     if (!data.ok || !data.result?.length) {
