@@ -2826,7 +2826,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         {pedidosPagos.map((pedido) => (
           <div
             key={pedido.id}
-            className="bg-white border border-emerald-300/50 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+            className="bg-white border border-emerald-300/50 rounded-2xl p-6 hover:border-emerald-400 hover:shadow-md transition-all"
           >
             <div className="flex justify-between items-start mb-3">
               <div>
@@ -2842,27 +2842,27 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               </span>
             </div>
 
-            <p className="text-zinc-500 text-sm font-medium truncate mb-3">{pedido.endereco}</p>
+            <p className="text-zinc-500 text-sm font-medium mb-3">{pedido.endereco}</p>
 
-            <div className="flex justify-between items-center pt-2 border-t border-zinc-100">
-              <div>
+            <div className="pt-3 border-t border-zinc-100 space-y-3">
+              <div className="flex items-center justify-between">
                 <span className="font-mono font-black text-emerald-600 text-lg">
                   R$ {pedido.valorTotal.toFixed(2)}
                 </span>
-                <span className="ml-2 text-[10px] font-bold uppercase text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span className="text-[11px] font-bold uppercase text-emerald-500 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
                   Concluido
                 </span>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => estornarPedido(pedido)}
-                  className="px-3 py-2 bg-red-100 hover:bg-red-200 active:bg-red-300 rounded-lg text-xs font-bold uppercase text-red-700 transition-colors"
+                  className="flex-1 py-2.5 bg-red-100 hover:bg-red-200 active:bg-red-300 rounded-xl text-xs font-bold uppercase text-red-700 transition-colors"
                 >
                   Excluir
                 </button>
                 <button
                   onClick={() => setPedidoDetalhado(pedido)}
-                  className="px-4 py-2 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-lg text-xs font-bold uppercase text-orange-800 transition-colors"
+                  className="flex-1 py-2.5 bg-orange-100 hover:bg-orange-200 active:bg-orange-300 rounded-xl text-xs font-bold uppercase text-orange-800 transition-colors"
                 >
                   Detalhes
                 </button>
