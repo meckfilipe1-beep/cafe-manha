@@ -174,6 +174,7 @@ export default function AdminPainel() {
   const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
   const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
   const [pedidoParaExcluir, setPedidoParaExcluir] = useState<any | null>(null);
+  const [pedidoParaEstornar, setPedidoParaEstornar] = useState<any | null>(null);
   const [fiados, setFiados] = useState<any[]>([]);
   const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
@@ -753,11 +754,16 @@ export default function AdminPainel() {
 
   async function estornarPedido(pedido: any) {
     if (!usuarioLogado || !pedido?.id) return;
-    if (!confirm(`Tem certeza que deseja excluir esta venda de R$ ${pedido.valorTotal?.toFixed(2)} de "${pedido.nome}"?\n\nO valor será subtraído do CAIXA GERAL.`)) return;
+    setPedidoParaEstornar(pedido);
+  }
+
+  async function confirmarEstornarPedido() {
+    if (!usuarioLogado || !pedidoParaEstornar?.id) return;
     try {
-      await updateDoc(doc(db, "pedidos", pedido.id), { estornado: true });
-      if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
+      await updateDoc(doc(db, "pedidos", pedidoParaEstornar.id), { estornado: true });
+      if (pedidoDetalhado?.id === pedidoParaEstornar.id) setPedidoDetalhado(null);
     } catch (error) { console.error("Erro ao estornar pedido:", error); }
+    setPedidoParaEstornar(null);
   }
 
   async function moverParaFiado(pedido: any) {
@@ -3233,6 +3239,35 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         </button>
         <button
           onClick={() => setPedidoParaExcluir(null)}
+          className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
+        >
+          CANCELAR
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{pedidoParaEstornar && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-[#FFFAF5] border border-red-500/30 w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl text-center">
+      <span className="text-5xl block mb-2">🗑️</span>
+      <h3 className="text-lg font-black text-red-500 uppercase">Excluir Venda?</h3>
+      <p className="text-[#71717A] font-bold text-sm">
+        Tem certeza que deseja excluir esta venda de <span className="text-orange-600">R$ {pedidoParaEstornar.valorTotal?.toFixed(2)}</span> de <span className="text-orange-600">{pedidoParaEstornar.nome}</span>?
+      </p>
+      <p className="text-[#A1A1AA] text-xs font-bold">
+        O valor será subtraído do CAIXA GERAL.
+      </p>
+      <div className="flex gap-3 pt-2">
+        <button
+          onClick={confirmarEstornarPedido}
+          className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
+        >
+          SIM, EXCLUIR
+        </button>
+        <button
+          onClick={() => setPedidoParaEstornar(null)}
           className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
         >
           CANCELAR
