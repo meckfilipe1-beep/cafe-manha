@@ -106,6 +106,10 @@ export default function ClientePainel() {
   const [pixCopiado, setPixCopiado] = useState(false)
   const [mostrarMensagemCopiado, setMostrarMensagemCopiado] = useState(false)
   const [versiculoEscolhido, setVersiculoEscolhido] = useState("")
+  const [pedidoExistenteDetectado, setPedidoExistenteDetectado] = useState<any>(null)
+  const [modalPedidoDuplicado, setModalPedidoDuplicado] = useState(false)
+  const [usarNovoHorario, setUsarNovoHorario] = useState(true)
+  const [salvamentoPendente, setSalvamentoPendente] = useState<{ enderecoCompleto: string } | null>(null)
 
   const DIAS_FUNCIONAMENTO = [
     { valor: "segunda", nome: "Segunda" }, { valor: "terca", nome: "Terça" },
@@ -343,73 +347,12 @@ export default function ClientePainel() {
       const pedidoExistente = await buscarPedidoAtivoMesmaPessoa(nome.trim(), telefone.trim())
 
       if (pedidoExistente) {
-        const itensCombinados = mergeItens(pedidoExistente.data.itens || {}, itens)
-
-        const itensOnly = Object.fromEntries(
-          Object.entries(itensCombinados).filter(([_, qtd]) => (qtd as number) > 0)
-        )
-
-        let novoSubtotal = 0
-        let qtdComidas = 0
-        const qtdCafes = itensOnly.cafe || 0
-
-        Object.entries(itensOnly).forEach(([chave, qtd]) => {
-          const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
-          novoSubtotal += preco * qtd
-          if (chave !== "cafe") qtdComidas += qtd
-        })
-
-        let descontoCombo = 0
-        if (qtdComidas > 0 && qtdCafes > 0) {
-          const totalCombos = Math.min(qtdComidas, qtdCafes)
-          let cafesUsados = 0
-          for (const [chave, qtd] of Object.entries(itensOnly)) {
-            if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
-              const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
-              const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
-              const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
-              descontoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
-              cafesUsados += qtdUsar
-            }
-          }
-        }
-
-        const novoTotal = Math.max(0, novoSubtotal - descontoCombo)
-
-        const observacoesItemCombinadas = {
-          ...(pedidoExistente.data.observacoesItem || {}),
-          ...Object.fromEntries(
-            Object.entries(observacoesItem).filter(([_, arr]) => arr && (arr as string[]).length > 0 && (arr as string[]).some(o => o.trim()))
-          )
-        }
-
-        await updateDoc(doc(db, "pedidos", pedidoExistente.id), {
-          itens: itensOnly,
-          valorTotal: novoTotal,
-          observacao: observacao.trim() || pedidoExistente.data.observacao || "",
-          observacoesItem: observacoesItemCombinadas,
-          horario: horario || pedidoExistente.data.horario || "",
-          dia: diaEscolhido?.nome || pedidoExistente.data.dia || "",
-          pagamento: pagamento || pedidoExistente.data.pagamento || "Pix",
-          troco: trocoCalculado > 0 ? trocoCalculado : pedidoExistente.data.troco || 0,
-          endereco: enderecoCompleto || pedidoExistente.data.endereco || "",
-        })
-
-        notificarPedido({
-          nome: nome.trim(),
-          horario: horario || pedidoExistente.data.horario || "",
-          valorTotal: novoTotal,
-          pedidoId: pedidoExistente.id,
-          itens: itensOnly,
-          pagamento: pagamento || pedidoExistente.data.pagamento || "Pix",
-          troco: trocoCalculado > 0 ? trocoCalculado : pedidoExistente.data.troco || 0,
-          endereco: enderecoCompleto || pedidoExistente.data.endereco || "",
-          telefone: telefone.trim() || pedidoExistente.data.telefone || "",
-          observacao: observacao.trim() || pedidoExistente.data.observacao || "",
-        })
-
-        setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
-        setEtapa("sucesso")
+        setPedidoExistenteDetectado(pedidoExistente)
+        setSalvamentoPendente({ enderecoCompleto })
+        setUsarNovoHorario(true)
+        setModalPedidoDuplicado(true)
+        setEnviandoPedido(false)
+        return
       } else {
         const payloadPedido = {
           nome: nome.trim(),
@@ -443,18 +386,6 @@ export default function ClientePainel() {
           observacao: observacao.trim(),
         })
 
-        const fiadoKey = `${telefone.trim()}_${nome.trim()}`
-        const fiadoRef = doc(db, "fiados", fiadoKey)
-        const fiadoSnap = await getDoc(fiadoRef)
-        if (fiadoSnap.exists()) {
-          const fiadoData = fiadoSnap.data()
-          await updateDoc(fiadoRef, {
-            pedidos: [...(fiadoData.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario, valor: valorTotalFinal, itens }],
-            totalDevido: (fiadoData.totalDevido || 0) + valorTotalFinal,
-            ultimaAtualizacao: new Date().toISOString(),
-          })
-        }
-
         setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
         setCodigoPix("")
         setStatusPix("normal")
@@ -472,7 +403,157 @@ export default function ClientePainel() {
     setItens({ tapiocaMolhada: 0, tapiocaManteiga: 0, tapiocaQueijo: 0, tapiocaOvo: 0, tapiocaQueijoOvo: 0, cuscuzMilho: 0, cuscuzArroz: 0, cuscuzMilhoArroz: 0, cafe: 0 })
     setObservacao(""); setObservacoesItem({}); setTrocoPara(""); setHorario(""); setDiaEscolhido(null); setErroValidacao(null)
     setVersiculoEscolhido(""); setStatusPix("normal"); setCodigoPix(""); setPixCopiado(false)
+    setPedidoExistenteDetectado(null); setModalPedidoDuplicado(false); setSalvamentoPendente(null)
     setEtapa("menu")
+  }
+
+  async function confirmarAdicionarAoPedido() {
+    if (!pedidoExistenteDetectado || !salvamentoPendente) return
+    setModalPedidoDuplicado(false)
+    setEnviandoPedido(true)
+    try {
+      const enderecoCompleto = salvamentoPendente.enderecoCompleto
+      const pedido = pedidoExistenteDetectado
+      const itensCombinados = mergeItens(pedido.data.itens || {}, itens)
+
+      const itensOnly = Object.fromEntries(
+        Object.entries(itensCombinados).filter(([_, qtd]) => (qtd as number) > 0)
+      )
+
+      let novoSubtotal = 0
+      let qtdComidas = 0
+      const qtdCafes = itensOnly.cafe || 0
+
+      Object.entries(itensOnly).forEach(([chave, qtd]) => {
+        const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+        novoSubtotal += preco * qtd
+        if (chave !== "cafe") qtdComidas += qtd
+      })
+
+      let descontoCombo = 0
+      if (qtdComidas > 0 && qtdCafes > 0) {
+        const totalCombos = Math.min(qtdComidas, qtdCafes)
+        let cafesUsados = 0
+        for (const [chave, qtd] of Object.entries(itensOnly)) {
+          if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
+            const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+            const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
+            const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
+            descontoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
+            cafesUsados += qtdUsar
+          }
+        }
+      }
+
+      const novoTotal = Math.max(0, novoSubtotal - descontoCombo)
+
+      const observacoesItemCombinadas = {
+        ...(pedido.data.observacoesItem || {}),
+        ...Object.fromEntries(
+          Object.entries(observacoesItem).filter(([_, arr]) => arr && (arr as string[]).length > 0 && (arr as string[]).some(o => o.trim()))
+        )
+      }
+
+      const horarioFinal = usarNovoHorario ? horario : (pedido.data.horario || horario)
+
+      await updateDoc(doc(db, "pedidos", pedido.id), {
+        itens: itensOnly,
+        valorTotal: novoTotal,
+        observacao: observacao.trim() || pedido.data.observacao || "",
+        observacoesItem: observacoesItemCombinadas,
+        horario: horarioFinal,
+        dia: diaEscolhido?.nome || pedido.data.dia || "",
+        pagamento: pagamento || pedido.data.pagamento || "Pix",
+        troco: trocoCalculado > 0 ? trocoCalculado : pedido.data.troco || 0,
+        endereco: enderecoCompleto || pedido.data.endereco || "",
+      })
+
+      notificarPedido({
+        nome: nome.trim(),
+        horario: horarioFinal,
+        valorTotal: novoTotal,
+        pedidoId: pedido.id,
+        itens: itensOnly,
+        pagamento: pagamento || pedido.data.pagamento || "Pix",
+        troco: trocoCalculado > 0 ? trocoCalculado : pedido.data.troco || 0,
+        endereco: enderecoCompleto || pedido.data.endereco || "",
+        telefone: telefone.trim() || pedido.data.telefone || "",
+        observacao: observacao.trim() || pedido.data.observacao || "",
+      })
+
+      setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
+      setPedidoExistenteDetectado(null)
+      setSalvamentoPendente(null)
+      setEtapa("sucesso")
+    } catch {
+      alert("Erro ao adicionar ao pedido. Tente novamente.")
+    } finally {
+      setEnviandoPedido(false)
+    }
+  }
+
+  async function confirmarPedidoNovo() {
+    if (!salvamentoPendente) return
+    setModalPedidoDuplicado(false)
+    setEnviandoPedido(true)
+    try {
+      const enderecoCompleto = salvamentoPendente.enderecoCompleto
+      const payloadPedido = {
+        nome: nome.trim(),
+        telefone: telefone.trim(),
+        endereco: enderecoCompleto,
+        observacao: observacao.trim(),
+        observacoesItem,
+        pagamento,
+        troco: trocoCalculado,
+        valorTotal: valorTotalFinal,
+        horario,
+        dia: diaEscolhido?.nome || "",
+        pago: pagamento === "Pix",
+        concluido: false,
+        dataCriacao: new Date().toISOString(),
+        itens
+      }
+
+      const docRef = await addDoc(collection(db, "pedidos"), payloadPedido)
+
+      notificarPedido({
+        nome: nome.trim(),
+        horario,
+        valorTotal: valorTotalFinal,
+        pedidoId: docRef.id,
+        itens,
+        pagamento,
+        troco: trocoCalculado,
+        endereco: enderecoCompleto,
+        telefone: telefone.trim(),
+        observacao: observacao.trim(),
+      })
+
+      const fiadoKey = `${telefone.trim()}_${nome.trim()}`
+      const fiadoRef = doc(db, "fiados", fiadoKey)
+      const fiadoSnap = await getDoc(fiadoRef)
+      if (fiadoSnap.exists()) {
+        const fiadoData = fiadoSnap.data()
+        await updateDoc(fiadoRef, {
+          pedidos: [...(fiadoData.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario, valor: valorTotalFinal, itens }],
+          totalDevido: (fiadoData.totalDevido || 0) + valorTotalFinal,
+          ultimaAtualizacao: new Date().toISOString(),
+        })
+      }
+
+      setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
+      setCodigoPix("")
+      setStatusPix("normal")
+      setPixCopiado(false)
+      setPedidoExistenteDetectado(null)
+      setSalvamentoPendente(null)
+      setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+    } catch {
+      alert("Erro ao enviar pedido. Tente novamente.")
+    } finally {
+      setEnviandoPedido(false)
+    }
   }
 
   if (carregandoLoja) {
@@ -928,6 +1009,79 @@ export default function ClientePainel() {
             {etapa === "dados" && <button onClick={irParaObservacao} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
             {etapa === "horario" && <button onClick={irParaPagamento} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Avançar →</button>}
             {etapa === "pagamento" && <button onClick={irParaConfirmacao} className="px-5 py-2 bg-orange-500 text-black font-black rounded-lg">Conferir →</button>}
+          </div>
+        </div>
+      )}
+      {/* === MODAL PEDIDO DUPLICADO === */}
+      {modalPedidoDuplicado && pedidoExistenteDetectado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white max-w-sm w-full rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="text-center">
+              <span className="text-4xl block mb-2">⚠️</span>
+              <h3 className="text-lg font-black text-orange-500 uppercase">Pedido em andamento!</h3>
+              <p className="text-sm text-[#71717A] font-bold mt-1">Você já tem um pedido ativo</p>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500 font-bold">Horário:</span>
+                <span className="font-black text-orange-700">{pedidoExistenteDetectado.data.horario || "Não definido"}</span>
+              </div>
+              <div className="text-sm">
+                <span className="text-zinc-500 font-bold">Itens:</span>
+                <p className="font-black text-orange-700 mt-1">
+                  {Object.entries(pedidoExistenteDetectado.data.itens || {})
+                    .filter(([_, qtd]) => (qtd as number) > 0)
+                    .map(([chave, qtd]) => `${qtd}x ${DETALHES_PRODUTOS[chave]?.nome || chave}`)
+                    .join(", ")}
+                </p>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500 font-bold">Total atual:</span>
+                <span className="font-black text-emerald-600">R$ {(pedidoExistenteDetectado.data.valorTotal || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={usarNovoHorario}
+                onChange={(e) => setUsarNovoHorario(e.target.checked)}
+                className="w-5 h-5 accent-blue-600"
+              />
+              <div>
+                <p className="text-sm font-black text-blue-800">Trocar horário</p>
+                <p className="text-xs text-blue-600 font-bold">
+                  {usarNovoHorario ? `Usar novo: ${horario}` : `Manter: ${pedidoExistenteDetectado.data.horario}`}
+                </p>
+              </div>
+            </label>
+
+            <div className="space-y-2">
+              <button
+                onClick={confirmarAdicionarAoPedido}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase rounded-xl transition-all shadow-md"
+              >
+                📌 Adicionar a esse pedido
+              </button>
+              <button
+                onClick={confirmarPedidoNovo}
+                className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase rounded-xl transition-all shadow-md"
+              >
+                🆕 Fazer pedido novo
+              </button>
+              <button
+                onClick={() => {
+                  setModalPedidoDuplicado(false)
+                  setPedidoExistenteDetectado(null)
+                  setSalvamentoPendente(null)
+                  setEnviandoPedido(false)
+                }}
+                className="w-full py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

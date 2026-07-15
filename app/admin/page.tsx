@@ -169,12 +169,16 @@ export default function AdminPainel() {
   const [mostrarResumoFinalAvulso, setMostrarResumoFinalAvulso] = useState(false);
   const [statusAvulsoSelecionado, setStatusAvulsoSelecionado] = useState<"pago" | "espera" | "fiado" | null>(null);
   const [pedidoDetalhado, setPedidoDetalhado] = useState<any | null>(null);
-  const [submenuAcoes, setSubmenuAcoes] = useState<"principal" | "concluir" | "zap">("principal");
+  const [submenuAcoes, setSubmenuAcoes] = useState<"principal" | "concluir" | "zap" | "confirmarConcluir" | "confirmarPago" | "confirmarFiado">("principal");
   const [mostrarDropdownHora, setMostrarDropdownHora] = useState(false);
   const [modalConfirmarTurno, setModalConfirmarTurno] = useState(false);
   const [modalConfirmarZerarTudo, setModalConfirmarZerarTudo] = useState(false);
   const [pedidoParaExcluir, setPedidoParaExcluir] = useState<any | null>(null);
   const [pedidoParaEstornar, setPedidoParaEstornar] = useState<any | null>(null);
+  const [fechamentoParaExcluir, setFechamentoParaExcluir] = useState<any | null>(null);
+  const [limparPendenciasNoFechamento, setLimparPendenciasNoFechamento] = useState(false);
+  const [pedidoPendenciaConfirmar, setPedidoPendenciaConfirmar] = useState<{ pedido: any; acao: "pago" | "fiado" } | null>(null);
+  const [confirmarAvulso, setConfirmarAvulso] = useState(false);
   const [fiados, setFiados] = useState<any[]>([]);
   const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
@@ -287,6 +291,29 @@ export default function AdminPainel() {
 
   useEffect(() => {
     if (!usuarioLogado) return;
+    async function limpezaAutomatica() {
+      try {
+        const snapPedidos = await getDocs(collection(db, "pedidos"));
+        const idsPedidosExistentes = new Set(snapPedidos.docs.map(d => d.id));
+        const snapFiados = await getDocs(collection(db, "fiados"));
+        for (const d of snapFiados.docs) {
+          const dados = d.data();
+          if (!dados.totalDevido || dados.totalDevido <= 0) {
+            await deleteDoc(doc(db, "fiados", d.id));
+          } else {
+            const pedidosValidos = (dados.pedidos || []).filter((p: any) => idsPedidosExistentes.has(p.pedidoId));
+            if (pedidosValidos.length !== (dados.pedidos || []).length) {
+              await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos });
+            }
+          }
+        }
+      } catch {}
+    }
+    limpezaAutomatica();
+  }, [usuarioLogado]);
+
+  useEffect(() => {
+    if (!usuarioLogado) return;
     const qPedidos = query(collection(db, "pedidos"));
     const unsubscribe = onSnapshot(qPedidos, (snap) => {
       const listaPedidos: any[] = [];
@@ -379,10 +406,6 @@ export default function AdminPainel() {
   const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
   const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
   const saldoLiquidoAtual = faturamentoTotal - totalDespesasAcumuladas;
-  const somaHistoricoPix = historicoCaixas.reduce((acc, c) => acc + (c.totalPix || 0), 0);
-  const somaHistoricoDinheiro = historicoCaixas.reduce((acc, c) => acc + (c.totalDinheiro || 0), 0);
-  const somaHistoricoDespesas = historicoCaixas.reduce((acc, c) => acc + (c.despesas || 0), 0);
-  const somaHistoricoLiquido = historicoCaixas.reduce((acc, c) => acc + (c.saldoLiquido || 0), 0);
 
   const fiadosAgrupados = fiados.filter(f => f.totalDevido > 0).reduce((acc: any[], f) => {
     const existente = acc.find(a => a.nome?.trim()?.toUpperCase() === f.nome?.trim()?.toUpperCase());
@@ -700,8 +723,10 @@ export default function AdminPainel() {
     const pedido = pedidoOverride || pedidoSelecionadoParaConcluir;
     if (!pedido || !usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: foiPago ? "pago" : "pendente" });
-      setNotificacaoCaixa(foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!");
+      const statusFinal = pedido.statusPagamento === "fiado" ? "fiado" : foiPago ? "pago" : "pendente";
+      const mensagem = statusFinal === "fiado" ? "📒 PEDIDO CONCLUÍDO NO FIADO!" : foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!";
+      await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: statusFinal });
+      setNotificacaoCaixa(mensagem);
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       setPedidoSelecionadoParaConcluir(null);
     } catch (erro) { console.error(erro); }
@@ -731,15 +756,6 @@ export default function AdminPainel() {
     try {
       await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pendente" });
       setNotificacaoCaixa("🟡 MOVIDO PARA PENDENTE!");
-      setTimeout(() => setNotificacaoCaixa(null), 2000);
-    } catch (erro) { console.error(erro); }
-  }
-
-  async function moverParaPendencia(id: string) {
-    if (!usuarioLogado) return;
-    try {
-      await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pendente" });
-      setNotificacaoCaixa("🔴 MOVIDO PARA AS PENDÊNCIAS!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
   }
@@ -957,15 +973,28 @@ export default function AdminPainel() {
       await addDoc(collection(db, "historico_caixas"), dadosFechamento);
 
       const snapPedidos = await getDocs(collection(db, "pedidos"));
-      const promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
+      let promessasDelecao;
+      if (limparPendenciasNoFechamento) {
+        promessasDelecao = snapPedidos.docs.map(d => deleteDoc(doc(db, "pedidos", d.id)));
+      } else {
+        promessasDelecao = snapPedidos.docs
+          .filter(d => d.data().statusPagamento === "pago")
+          .map(d => deleteDoc(doc(db, "pedidos", d.id)));
+      }
       await Promise.all(promessasDelecao);
 
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, entradasFiado: 0 }, { merge: true });
+      if (limparPendenciasNoFechamento) {
+        const snapFiados = await getDocs(collection(db, "fiados"));
+        await Promise.all(snapFiados.docs.map(d => deleteDoc(doc(db, "fiados", d.id))));
+      }
+
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
 
       setTotalDespesasAcumuladas(0);
       setTotalEntradasFiado(0);
       setModalConfirmarTurno(false);
       setModalSalvarTurno(false);
+      setLimparPendenciasNoFechamento(false);
 
       setNotificacaoCaixa("✅ Turno arquivado e contadores zerados!");
       setTimeout(() => setNotificacaoCaixa(null), 4000);
@@ -973,6 +1002,65 @@ export default function AdminPainel() {
     } catch (error) {
       console.error("Erro ao arquivar turno:", error);
       setNotificacaoCaixa("❌ Erro ao arquivar turno — verifique o console");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    }
+  }
+
+  async function excluirFechamento(caixaId: string) {
+    if (!usuarioLogado) return;
+    try {
+      await deleteDoc(doc(db, "historico_caixas", caixaId));
+      setFechamentoParaExcluir(null);
+      setNotificacaoCaixa("🗑️ Fechamento excluído do histórico!");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (error) {
+      console.error("Erro ao excluir fechamento:", error);
+      setNotificacaoCaixa("❌ Erro ao excluir fechamento");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    }
+  }
+
+  async function limparFiadosQuitados() {
+    if (!usuarioLogado) return;
+    try {
+      const snap = await getDocs(collection(db, "fiados"));
+      let removidos = 0;
+      for (const d of snap.docs) {
+        const dados = d.data();
+        if (!dados.totalDevido || dados.totalDevido <= 0) {
+          await deleteDoc(doc(db, "fiados", d.id));
+          removidos++;
+        }
+      }
+      setNotificacaoCaixa(`🗑️ ${removidos} fiado(s) quitado(s) removido(s)!`);
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (error) {
+      console.error("Erro ao limpar fiados quitados:", error);
+      setNotificacaoCaixa("❌ Erro ao limpar fiados quitados");
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    }
+  }
+
+  async function limparFiadosOrfaos() {
+    if (!usuarioLogado) return;
+    try {
+      const snapPedidos = await getDocs(collection(db, "pedidos"));
+      const idsPedidosExistentes = new Set(snapPedidos.docs.map(d => d.id));
+      const snapFiados = await getDocs(collection(db, "fiados"));
+      let corrigidos = 0;
+      for (const d of snapFiados.docs) {
+        const dados = d.data();
+        const pedidosValidos = (dados.pedidos || []).filter((p: any) => idsPedidosExistentes.has(p.pedidoId));
+        if (pedidosValidos.length !== (dados.pedidos || []).length) {
+          await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos });
+          corrigidos++;
+        }
+      }
+      setNotificacaoCaixa(`🔧 ${corrigidos} fiado(s) com referências órfãs corrigido(s)!`);
+      setTimeout(() => setNotificacaoCaixa(null), 3000);
+    } catch (error) {
+      console.error("Erro ao limpar fiados órfãos:", error);
+      setNotificacaoCaixa("❌ Erro ao limpar fiados órfãos");
       setTimeout(() => setNotificacaoCaixa(null), 3000);
     }
   }
@@ -2137,23 +2225,66 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 
         <div className="flex gap-3 pt-2">
           <button
-            onClick={() => { setMostrarResumoFinalAvulso(false); setStatusAvulsoSelecionado(null); }}
+            onClick={() => { setMostrarResumoFinalAvulso(false); setStatusAvulsoSelecionado(null); setConfirmarAvulso(false); }}
             className="flex-1 py-3.5 bg-zinc-300 hover:bg-zinc-400 text-zinc-700 font-black uppercase text-sm rounded-xl transition-all"
           >
             Voltar
           </button>
           <button
-            onClick={() => {
-              const status = statusAvulsoSelecionado;
-              setMostrarResumoFinalAvulso(false);
-              setStatusAvulsoSelecionado(null);
-              finalizarPedidoAvulsoComStatusRoteado(status);
-            }}
+            onClick={() => setConfirmarAvulso(true)}
             className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-sm rounded-xl transition-all shadow-md"
           >
             Confirmar
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{confirmarAvulso && statusAvulsoSelecionado && (
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] px-4">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+      <span className="text-5xl block mb-2">
+        {statusAvulsoSelecionado === "pago" ? "✅" : statusAvulsoSelecionado === "fiado" ? "📒" : "⏳"}
+      </span>
+      <h3 className="text-lg font-black text-gray-800 uppercase mb-1">
+        {statusAvulsoSelecionado === "pago" ? "Finalizar como PAGO?" :
+         statusAvulsoSelecionado === "fiado" ? "Finalizar como FIADO?" :
+         "Finalizar como EM ESPERA?"}
+      </h3>
+      <p className="text-sm text-gray-600 mb-1">
+        Pedido de <span className="font-black text-orange-600">{nomeAvulso || "NÃO INFORMADO"}</span>
+      </p>
+      <p className="text-sm font-black text-emerald-700 mb-1">R$ {valorTotalAvulso}</p>
+      <p className="text-xs text-gray-500 mb-5">
+        {statusAvulsoSelecionado === "pago" && "O pedido será salvo em VENDAS PAGAS no CAIXA GERAL."}
+        {statusAvulsoSelecionado === "fiado" && "O pedido será salvo em FIADOS no CAIXA GERAL."}
+        {statusAvulsoSelecionado === "espera" && "O pedido ficará no quadro em andamento."}
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            const status = statusAvulsoSelecionado;
+            setConfirmarAvulso(false);
+            setMostrarResumoFinalAvulso(false);
+            setStatusAvulsoSelecionado(null);
+            finalizarPedidoAvulsoComStatusRoteado(status);
+          }}
+          className={`flex-1 py-3 ${
+            statusAvulsoSelecionado === "pago" ? "bg-emerald-500 hover:bg-emerald-600" :
+            statusAvulsoSelecionado === "fiado" ? "bg-purple-500 hover:bg-purple-600" :
+            "bg-blue-500 hover:bg-blue-600"
+          } text-white rounded-xl font-black uppercase text-sm transition-all shadow-md`}
+        >
+          SIM, FINALIZAR
+        </button>
+        <button
+          onClick={() => setConfirmarAvulso(false)}
+          className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-gray-800 rounded-xl font-black uppercase text-sm transition-all"
+        >
+          CANCELAR
+        </button>
       </div>
     </div>
   </div>
@@ -2205,7 +2336,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 👁️
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={() => {
                   const numero = pedido.telefone?.replace(/\D/g, "");
@@ -2220,16 +2351,22 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 📲 Cobrar
               </button>
               <button
-                onClick={() => marcarComoPago(pedido.id)}
+                onClick={() => setPedidoPendenciaConfirmar({ pedido, acao: "pago" })}
                 className="py-2 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-blue-500/20 transition-all"
               >
                 ✅ Pago
               </button>
               <button
-                onClick={() => moverParaFiado(pedido)}
+                onClick={() => setPedidoPendenciaConfirmar({ pedido, acao: "fiado" })}
                 className="py-2 bg-purple-500/10 text-purple-600 border border-purple-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-purple-500/20 transition-all"
               >
                 📒 Fiado
+              </button>
+              <button
+                onClick={() => setPedidoParaExcluir(pedido)}
+                className="py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-red-500/20 transition-all"
+              >
+                🗑️ Excluir
               </button>
             </div>
           </div>
@@ -2247,6 +2384,23 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
     <h2 className="text-lg font-black text-purple-400 uppercase tracking-wider mb-6 text-center">
       📒 FIADOS ({fiadosAgrupados.length})
     </h2>
+
+    {fiados.length > 0 && (
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={limparFiadosQuitados}
+          className="flex-1 py-2 bg-purple-500/10 text-purple-600 border border-purple-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-purple-500/20 transition-all"
+        >
+          🧹 Limpar Quitados
+        </button>
+        <button
+          onClick={limparFiadosOrfaos}
+          className="flex-1 py-2 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-amber-500/20 transition-all"
+        >
+          🔧 Limpar Órfãos
+        </button>
+      </div>
+    )}
 
     {fiadosAgrupados.length === 0 ? (
       <div className="text-center py-12 text-zinc-500 font-bold uppercase">
@@ -2521,11 +2675,6 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         )}
 
         <div className="flex gap-2 pt-2">
-          {pedidoDetalhado.statusPagamento === "pendente" && (
-            <button onClick={() => marcarComoPago(pedidoDetalhado.id)} className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase rounded-xl transition-all shadow-md">
-              Marcar como Pago
-            </button>
-          )}
           <button onClick={() => setPedidoDetalhado(null)} className="flex-1 py-3 bg-zinc-400 hover:bg-zinc-500 text-white font-black text-xs uppercase rounded-xl transition-all shadow-md">
             Voltar
           </button>
@@ -2546,15 +2695,10 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         const p = pedidoSelecionadoParaConcluir;
 
         if (submenuAcoes === "principal") {
-          const jaPago = p?.statusPagamento === "pago";
           return (
             <div className="space-y-3 pt-2">
               <button
-                onClick={() => {
-                  processarDecisaoPedidoExistente(jaPago, p);
-                  setPedidoSelecionadoParaConcluir(null);
-                  setSubmenuAcoes("principal");
-                }}
+                onClick={() => setSubmenuAcoes("confirmarConcluir")}
                 className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 ✅ CONCLUIR
@@ -2564,6 +2708,37 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                 className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
               >
                 📱 AVISOS
+              </button>
+            </div>
+          );
+        }
+
+        if (submenuAcoes === "confirmarConcluir") {
+          const destino = p?.statusPagamento === "pago" ? "VENDAS PAGAS" : p?.statusPagamento === "fiado" ? "FIADOS" : "PENDÊNCIAS";
+          const corDestino = p?.statusPagamento === "pago" ? "text-emerald-800" : p?.statusPagamento === "fiado" ? "text-purple-800" : "text-amber-800";
+          const bgDestino = p?.statusPagamento === "pago" ? "bg-emerald-50 border-emerald-300" : p?.statusPagamento === "fiado" ? "bg-purple-50 border-purple-300" : "bg-amber-50 border-amber-300";
+          const jaPago = p?.statusPagamento === "pago";
+          return (
+            <div className="space-y-3 pt-2">
+              <div className={`${bgDestino} border rounded-xl p-3 text-center`}>
+                <p className="text-sm font-black text-zinc-600">Esse pedido será movido para</p>
+                <p className={`text-lg font-black ${corDestino}`}>{destino}</p>
+              </div>
+              <button
+                onClick={() => {
+                  processarDecisaoPedidoExistente(jaPago, p);
+                  setPedidoSelecionadoParaConcluir(null);
+                  setSubmenuAcoes("principal");
+                }}
+                className="w-full py-5 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
+              >
+                ✅ SIM, CONCLUIR
+              </button>
+              <button
+                onClick={() => setSubmenuAcoes("principal")}
+                className="w-full py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
+              >
+                Cancelar
               </button>
             </div>
           );
@@ -3102,6 +3277,14 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   <p className="text-2xl font-black text-emerald-700">R$ {(caixa.saldoLiquido || 0).toFixed(2)}</p>
                 </div>
               </div>
+
+              {/* BOTÃO EXCLUIR */}
+              <button
+                onClick={() => setFechamentoParaExcluir(caixa)}
+                className="mt-3 w-full text-center text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 border border-red-300 hover:border-red-500 rounded-lg py-1.5 transition-all"
+              >
+                🗑️ Excluir Fechamento
+              </button>
             </div>
           ))}
 
@@ -3115,12 +3298,24 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
   <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
     <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
       <h3 className="text-lg font-black text-orange-600 mb-2">Arquivar Turno?</h3>
-      <p className="text-sm text-zinc-600 mb-6">
-        Isso vai arquivar o caixa no histórico, apagar todos os pedidos e zerar as despesas.
+      <p className="text-sm text-zinc-600 mb-4">
+        Isso vai arquivar o caixa no histórico, apagar pedidos pagos e zerar as despesas.
       </p>
+      <label className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-3 mb-6 cursor-pointer text-left">
+        <input
+          type="checkbox"
+          checked={limparPendenciasNoFechamento}
+          onChange={(e) => setLimparPendenciasNoFechamento(e.target.checked)}
+          className="w-5 h-5 accent-red-600"
+        />
+        <div>
+          <p className="text-sm font-black text-red-700">Limpar TUDO</p>
+          <p className="text-xs text-red-500 font-bold">Apaga pendências e fiados também</p>
+        </div>
+      </label>
       <div className="flex gap-3">
         <button
-          onClick={() => setModalConfirmarTurno(false)}
+          onClick={() => { setModalConfirmarTurno(false); setLimparPendenciasNoFechamento(false); }}
           className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-black uppercase text-sm"
         >
           Cancelar
@@ -3269,6 +3464,76 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         <button
           onClick={() => setPedidoParaEstornar(null)}
           className="flex-1 py-3 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 font-black uppercase text-sm rounded-xl transition-all"
+        >
+          CANCELAR
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{fechamentoParaExcluir && (
+  <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-50 px-4">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+      <h3 className="text-lg font-bold text-center text-gray-800 mb-2">
+        Excluir fechamento?
+      </h3>
+      <p className="text-center text-gray-600 mb-1 text-sm">
+        📅 {fechamentoParaExcluir.dataHora}
+      </p>
+      <p className="text-center text-gray-600 mb-6 text-sm">
+        Valor: <span className="font-black text-emerald-700">R$ {(fechamentoParaExcluir.saldoLiquido || 0).toFixed(2)}</span>
+      </p>
+      <div className="flex gap-3 w-full">
+        <button
+          onClick={() => excluirFechamento(fechamentoParaExcluir.id)}
+          className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black uppercase transition-all duration-200 shadow-sm hover:shadow"
+        >
+          SIM, EXCLUIR
+        </button>
+        <button
+          onClick={() => setFechamentoParaExcluir(null)}
+          className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-gray-800 rounded-xl font-black uppercase transition-all duration-200"
+        >
+          CANCELAR
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{pedidoPendenciaConfirmar && (
+  <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-50 px-4">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+      <span className="text-4xl block mb-2">{pedidoPendenciaConfirmar.acao === "pago" ? "✅" : "📒"}</span>
+      <h3 className="text-lg font-black text-gray-800 mb-1">
+        {pedidoPendenciaConfirmar.acao === "pago" ? "Marcar como Pago?" : "Mover para Fiado?"}
+      </h3>
+      <p className="text-sm text-gray-600 mb-1">
+        <span className="font-black text-orange-600">{pedidoPendenciaConfirmar.pedido.nome}</span> — R$ {pedidoPendenciaConfirmar.pedido.valorTotal.toFixed(2)}
+      </p>
+      <p className="text-xs text-gray-500 mb-5">
+        {pedidoPendenciaConfirmar.acao === "pago"
+          ? "O pedido será movido para VENDAS PAGAS."
+          : "O pedido será movido para FIADOS."}
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            if (pedidoPendenciaConfirmar.acao === "pago") {
+              marcarComoPago(pedidoPendenciaConfirmar.pedido.id);
+            } else {
+              moverParaFiado(pedidoPendenciaConfirmar.pedido);
+            }
+            setPedidoPendenciaConfirmar(null);
+          }}
+          className={`flex-1 py-3 ${pedidoPendenciaConfirmar.acao === "pago" ? "bg-emerald-500 hover:bg-emerald-600" : "bg-purple-500 hover:bg-purple-600"} text-white rounded-xl font-black uppercase text-sm transition-all shadow-md`}
+        >
+          SIM, CONFIRMAR
+        </button>
+        <button
+          onClick={() => setPedidoPendenciaConfirmar(null)}
+          className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-gray-800 rounded-xl font-black uppercase text-sm transition-all"
         >
           CANCELAR
         </button>
