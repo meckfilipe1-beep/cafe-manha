@@ -499,9 +499,9 @@ export default function AdminPainel() {
         sexta: diasFuncionamento.sexta ? horariosGerados : [],
         sabado: diasFuncionamento.sabado ? horariosGerados : [],
       };
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { 
+      await setDoc(doc(db, "configuracoes", "funcionamento"), {
         horaAbertura, horaFechamento, diasFuncionamento, diasEntrega, horariosPorDia: novosHorariosPorDia, aberta: funcionamentoAberta
-      });
+      }, { merge: true });
       setNotificacaoCaixa("✅ Configurações salvas!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) {
@@ -988,7 +988,7 @@ export default function AdminPainel() {
         await Promise.all(snapFiados.docs.map(d => deleteDoc(doc(db, "fiados", d.id))));
       }
 
-      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0 }, { merge: true });
+      await setDoc(doc(db, "configuracoes", "funcionamento"), { despesas: 0, entradasFiado: 0 }, { merge: true });
 
       setTotalDespesasAcumuladas(0);
       setTotalEntradasFiado(0);
