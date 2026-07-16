@@ -7,7 +7,7 @@ function formatarBloco(id: string, valor: string): string {
 
 export async function gerarPixCopiaECola(valor: number) {
   // Ajustado exatamente para a chave pura de 11 dígitos fornecida, sem o 55
-  const chave =  "+5591984269140"
+  const chave =  "suelirlopes1@gmail.com"
   const nomePDV = "SUELI BAHIA" 
   const nomeConsumidor = "CONSUMIDOR"
   const city = "BELEMPA"

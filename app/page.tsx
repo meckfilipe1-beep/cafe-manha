@@ -93,6 +93,7 @@ export default function ClientePainel() {
   const [observacoesItem, setObservacoesItem] = useState<{ [key: string]: string[] }>({})
   const [telefone, setTelefone] = useState("")
   const [pagamento, setPagamento] = useState<"Pix" | "Dinheiro">("Pix")
+  const [vaiPagarAgora, setVaiPagarAgora] = useState<boolean | null>(null)
   const [trocoPara, setTrocoPara] = useState("")
   const [horario, setHorario] = useState("")
   const [diaEscolhido, setDiaEscolhido] = useState<any>(null)
@@ -313,7 +314,9 @@ export default function ClientePainel() {
     setCodigoPix("")
     setPixCopiado(false)
 
-    if (pagamento === "Pix") {
+    if (vaiPagarAgora === false) {
+      await salvarPedidoNoBanco()
+    } else if (pagamento === "Pix") {
       try {
         setStatusPix("carregando")
         const dadosPix = await gerarPixCopiaECola(valorTotalFinal)
@@ -354,18 +357,21 @@ export default function ClientePainel() {
         setEnviandoPedido(false)
         return
       } else {
+        const vaiPagar = vaiPagarAgora === true
         const payloadPedido = {
           nome: nome.trim(),
           telefone: telefone.trim(),
           endereco: enderecoCompleto,
           observacao: observacao.trim(),
           observacoesItem,
-          pagamento,
-          troco: trocoCalculado,
+          pagamento: pagamento,
+          troco: vaiPagar ? trocoCalculado : 0,
           valorTotal: valorTotalFinal,
           horario,
           dia: diaEscolhido?.nome || "",
-          pago: pagamento === "Pix",
+          pago: false,
+          statusPagamento: "pendente",
+          mensagemPagamento: vaiPagar ? "Cliente informou que já pagou" : "Cliente ainda não pagou",
           concluido: false,
           dataCriacao: new Date().toISOString(),
           itens
@@ -390,7 +396,7 @@ export default function ClientePainel() {
         setCodigoPix("")
         setStatusPix("normal")
         setPixCopiado(false)
-        setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+        setEtapa(pagamento === "Pix" && vaiPagarAgora !== false ? "aviso" : "sucesso")
       }
     } catch {
       alert("Erro ao enviar pedido. Tente novamente.")
@@ -404,6 +410,7 @@ export default function ClientePainel() {
     setObservacao(""); setObservacoesItem({}); setTrocoPara(""); setHorario(""); setDiaEscolhido(null); setErroValidacao(null)
     setVersiculoEscolhido(""); setStatusPix("normal"); setCodigoPix(""); setPixCopiado(false)
     setPedidoExistenteDetectado(null); setModalPedidoDuplicado(false); setSalvamentoPendente(null)
+    setVaiPagarAgora(null)
     setEtapa("menu")
   }
 
@@ -484,6 +491,7 @@ export default function ClientePainel() {
       setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
       setPedidoExistenteDetectado(null)
       setSalvamentoPendente(null)
+      setVaiPagarAgora(null)
       setEtapa("sucesso")
     } catch {
       alert("Erro ao adicionar ao pedido. Tente novamente.")
@@ -498,18 +506,21 @@ export default function ClientePainel() {
     setEnviandoPedido(true)
     try {
       const enderecoCompleto = salvamentoPendente.enderecoCompleto
+      const vaiPagar = vaiPagarAgora === true
       const payloadPedido = {
         nome: nome.trim(),
         telefone: telefone.trim(),
         endereco: enderecoCompleto,
         observacao: observacao.trim(),
         observacoesItem,
-        pagamento,
-        troco: trocoCalculado,
+        pagamento: pagamento,
+        troco: vaiPagar ? trocoCalculado : 0,
         valorTotal: valorTotalFinal,
         horario,
         dia: diaEscolhido?.nome || "",
-        pago: pagamento === "Pix",
+        pago: false,
+        statusPagamento: "pendente",
+        mensagemPagamento: vaiPagar ? "Cliente informou que já pagou" : "Cliente ainda não pagou",
         concluido: false,
         dataCriacao: new Date().toISOString(),
         itens
@@ -530,25 +541,14 @@ export default function ClientePainel() {
         observacao: observacao.trim(),
       })
 
-      const fiadoKey = `${telefone.trim()}_${nome.trim()}`
-      const fiadoRef = doc(db, "fiados", fiadoKey)
-      const fiadoSnap = await getDoc(fiadoRef)
-      if (fiadoSnap.exists()) {
-        const fiadoData = fiadoSnap.data()
-        await updateDoc(fiadoRef, {
-          pedidos: [...(fiadoData.pedidos || []), { pedidoId: docRef.id, data: new Date().toISOString(), horario, valor: valorTotalFinal, itens }],
-          totalDevido: (fiadoData.totalDevido || 0) + valorTotalFinal,
-          ultimaAtualizacao: new Date().toISOString(),
-        })
-      }
-
       setVersiculoEscolhido(VERSICULOS_BENCÃO[Math.floor(Math.random() * VERSICULOS_BENCÃO.length)])
       setCodigoPix("")
       setStatusPix("normal")
       setPixCopiado(false)
       setPedidoExistenteDetectado(null)
       setSalvamentoPendente(null)
-      setEtapa(pagamento === "Pix" ? "aviso" : "sucesso")
+      setVaiPagarAgora(null)
+      setEtapa(pagamento === "Pix" && vaiPagarAgora !== false ? "aviso" : "sucesso")
     } catch {
       alert("Erro ao enviar pedido. Tente novamente.")
     } finally {
@@ -809,53 +809,46 @@ export default function ClientePainel() {
           )}
 
           <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
-            <div>
-              <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Dia da Entrega *</label>
-              <div className="grid grid-cols-3 gap-2">
-                {diasPermitidosParaEntrega().length === 0 ? (
-                  <p className="text-red-600 col-span-3 text-center">Nenhum dia disponível</p>
-                ) : (
-                  diasPermitidosParaEntrega().map(dia => (
-                    <button key={dia.valor} onClick={() => { setDiaEscolhido(dia); setHorario("") }}
-                      className={`py-3 rounded-lg font-bold ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black" : "bg-white border"}`}>
-                      {dia.nome}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {diaEscolhido && (
               <div>
-                <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Horário *</label>
-                <button onClick={() => setMostrarListaHorarios(!mostrarListaHorarios)}
-                  className={`w-full py-4 border-4 rounded-2xl font-black text-xl ${horario ? "border-emerald-500 text-emerald-600" : "border-orange-500 text-orange-600 animate-pulse"}`}>
-                  {horario || "Toque para escolher horário"}
-                </button>
-                {mostrarListaHorarios && (
-                  <div className="mt-2 grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-3 bg-[#FFFAF5] border-2 border-orange-500 rounded-xl">
+                <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Dia da Entrega *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {diasPermitidosParaEntrega().length === 0 ? (
+                    <p className="text-red-600 col-span-3 text-center">Nenhum dia disponível</p>
+                  ) : (
+                    diasPermitidosParaEntrega().map(dia => (
+                      <button key={dia.valor} onClick={() => { setDiaEscolhido(dia); setHorario("") }}
+                        className={`py-3 rounded-lg font-bold ${diaEscolhido?.valor === dia.valor ? "bg-orange-500 text-black" : "bg-white border"}`}>
+                        {dia.nome}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {diaEscolhido && (
+                <div>
+                  <label className="text-sm font-black text-orange-600 uppercase text-center block mb-3">Horário *</label>
+                  <div className="grid grid-cols-4 gap-2">
                     {horariosPermitidosParaDia().length === 0 ? (
                       <p className="text-red-600 col-span-4 text-center">Sem horários</p>
                     ) : (
                       horariosPermitidosParaDia().map((hora: string) => (
-                        <button key={hora} onClick={() => { setHorario(hora); setMostrarListaHorarios(false) }}
+                        <button key={hora} onClick={() => setHorario(hora)}
                           className={`py-3 rounded-lg font-bold ${horario === hora ? "bg-orange-500 text-black" : "bg-white border"}`}>
                           {hora}
                         </button>
                       ))
                     )}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
 
-            {diaEscolhido && horario && (
-              <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-3 text-center">
-                <p className="text-emerald-700 font-black">✅ Entrega: {diaEscolhido.nome} às {horario}</p>
-              </div>
-            )}
-          </div>
-
+          {diaEscolhido && horario && (
+            <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-3 text-center">
+              <p className="text-emerald-700 font-black">✅ Entrega: {diaEscolhido.nome} às {horario}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -863,41 +856,68 @@ export default function ClientePainel() {
       {etapa === "pagamento" && (
         <div className="max-w-md mx-auto px-4 mt-6 space-y-6">
           <div className="flex items-center gap-2 border-b pb-3">
-            <button onClick={() => setEtapa("horario")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Horário</button>
+            <button onClick={() => { setEtapa("horario"); setVaiPagarAgora(null) }} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Horário</button>
             <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Pagamento</h2>
           </div>
 
-          <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
-          <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setPagamento("Pix")}
-                className={`p-4 rounded-xl font-black uppercase ${pagamento === "Pix" ? "bg-emerald-600 text-white" : "bg-[#FFFAF5] border"}`}>
-                📲 PIX
-              </button>
-              <button onClick={() => setPagamento("Dinheiro")}
-                className={`p-4 rounded-xl font-black uppercase ${pagamento === "Dinheiro" ? "bg-orange-500 text-white" : "bg-[#FFFAF5] border"}`}>
-                💵 DINHEIRO
+          {/* PERGUNTA: VAI PAGAR AGORA? */}
+          {vaiPagarAgora === null && (
+            <div className="bg-white border p-6 rounded-2xl space-y-4 shadow-md text-center">
+              <div className="text-4xl">💳</div>
+              <h3 className="text-lg font-black text-orange-600 uppercase">Vai pagar agora?</h3>
+              <p className="text-sm text-zinc-500">Se não, ficará na fila de espera</p>
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <button onClick={() => setVaiPagarAgora(true)}
+                  className="p-4 rounded-xl font-black uppercase bg-emerald-500 text-white hover:bg-emerald-600 transition-all">
+                  SIM
+                </button>
+                <button onClick={() => { setVaiPagarAgora(false); setEtapa("confirmacao") }}
+                  className="p-4 rounded-xl font-black uppercase bg-orange-400 text-white hover:bg-orange-500 transition-all">
+                  NÃO
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ESCOLHA DE MÉTODO (só aparece se "Sim") */}
+          {vaiPagarAgora === true && (
+            <div className="bg-white border p-4 rounded-2xl space-y-4 shadow-md">
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setPagamento("Pix")}
+                  className={`p-4 rounded-xl font-black uppercase ${pagamento === "Pix" ? "bg-emerald-600 text-white" : "bg-[#FFFAF5] border"}`}>
+                  📲 PIX
+                </button>
+                <button onClick={() => setPagamento("Dinheiro")}
+                  className={`p-4 rounded-xl font-black uppercase ${pagamento === "Dinheiro" ? "bg-orange-500 text-white" : "bg-[#FFFAF5] border"}`}>
+                  💵 DINHEIRO
+                </button>
+              </div>
+
+              {pagamento === "Pix" && (
+                <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-4 text-center">
+                  <p className="font-black text-sm">Total a pagar</p>
+                  <p className="text-3xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
+                </div>
+              )}
+
+              {pagamento === "Dinheiro" && (
+                <div className="space-y-3">
+                  <label className="text-sm font-black text-orange-600 uppercase block text-center">Precisa de troco?</label>
+                  <input type="text" inputMode="numeric" value={trocoPara} onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ""))} placeholder="Valor da nota" className="w-full p-3 border rounded-xl text-center font-black" />
+                  {trocoCalculado > 0 && (
+                    <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 text-center">
+                      <p>Troco: <strong>R$ {trocoCalculado.toFixed(2)}</strong></p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button onClick={() => setVaiPagarAgora(null)}
+                className="w-full py-2 text-xs text-zinc-400 font-bold uppercase">
+                ← Voltar
               </button>
             </div>
-
-            {pagamento === "Pix" && (
-              <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-4 text-center">
-                <p className="font-black text-sm">Total a pagar</p>
-                <p className="text-3xl font-black text-emerald-600">R$ {valorTotalFinal.toFixed(2)}</p>
-              </div>
-            )}
-
-            {pagamento === "Dinheiro" && (
-              <div className="space-y-3">
-                <label className="text-sm font-black text-orange-600 uppercase block text-center">Precisa de troco?</label>
-                <input type="text" inputMode="numeric" value={trocoPara} onChange={(e) => setTrocoPara(e.target.value.replace(/\D/g, ""))} placeholder="Valor da nota" className="w-full p-3 border rounded-xl text-center font-black" />
-                {trocoCalculado > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-500 rounded-xl p-3 text-center">
-                    <p>Troco: <strong>R$ {trocoCalculado.toFixed(2)}</strong></p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )}
 
         </div>
       )}
@@ -906,7 +926,7 @@ export default function ClientePainel() {
       {etapa === "confirmacao" && (
         <div className="max-w-md mx-auto px-3 mt-4 space-y-4">
           <div className="flex items-center gap-2 border-b pb-3">
-            <button onClick={() => setEtapa("pagamento")} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Pagamento</button>
+            <button onClick={() => { setEtapa("pagamento"); if (vaiPagarAgora === false) setVaiPagarAgora(null) }} className="text-xs bg-white border px-3 py-1.5 rounded-xl">← Pagamento</button>
             <h2 className="text-xs font-black uppercase text-orange-500 ml-auto">Revisão do Pedido</h2>
           </div>
 
@@ -916,7 +936,7 @@ export default function ClientePainel() {
               <p><strong>Endereço:</strong> <span className="text-orange-600 font-black">{endereco}, Nº {numeroCasa}</span></p>
               {referencia && <p className="text-sm text-emerald-600">Ref: {referencia}</p>}
               <p><strong>Entrega:</strong> {diaEscolhido?.nome} às {horario}</p>
-              <p><strong>Pagamento:</strong> {pagamento}</p>
+              <p><strong>Pagamento:</strong> <span className={vaiPagarAgora === false ? "text-orange-500 font-black" : ""}>{vaiPagarAgora === false ? "Pagar depois" : pagamento}</span></p>
             </div>
 
             <div className="border-t pt-4">
@@ -953,8 +973,8 @@ export default function ClientePainel() {
             </div>
 
             <button onClick={processarEnvioPedido} disabled={enviandoPedido}
-              className="w-full py-4 bg-emerald-600 text-black font-black uppercase rounded-xl mt-4 disabled:opacity-50">
-              {enviandoPedido ? "Processando..." : pagamento === "Pix" ? "📲 GERAR PIX" : "✅ CONFIRMAR PEDIDO"}
+              className={`w-full py-4 text-black font-black uppercase rounded-xl mt-4 disabled:opacity-50 ${vaiPagarAgora === false ? "bg-orange-400 hover:bg-orange-500" : "bg-emerald-600"}`}>
+              {enviandoPedido ? "Processando..." : vaiPagarAgora === false ? "📩 ENVIAR PEDIDO" : pagamento === "Pix" ? "📲 GERAR PIX" : "✅ CONFIRMAR PEDIDO"}
             </button>
           </div>
         </div>

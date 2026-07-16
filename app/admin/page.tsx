@@ -19,6 +19,7 @@ import {
 import { buscarPedidoAtivoMesmaPessoa, mergeItens } from "@/lib/pedidoUtils";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { notificarPedido } from "@/lib/notificarPedido";
+import { gerarPixCopiaECola } from "@/lib/pix";
 
 // Funções auxiliares fora do componente
 const tocarSomPedido = () => {
@@ -184,6 +185,7 @@ export default function AdminPainel() {
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
   const [fiadoExpandido, setFiadoExpandido] = useState<string | null>(null);
   const [fiadoParaExcluir, setFiadoParaExcluir] = useState<{ id: string; nome: string } | null>(null);
+  const [pixFiadoModal, setPixFiadoModal] = useState<{ nome: string; valor: number; telefone: string; codigoPix: string } | null>(null);
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
   const [totalEntradasFiado, setTotalEntradasFiado] = useState(0);
@@ -424,10 +426,11 @@ export default function AdminPainel() {
   };
 
   function chamarClienteWhatsapp(pedido: any) {
-    if (!pedido.telefone) { alert("Cliente não informou telefone."); return; }
-    const numero = pedido.telefone.replace(/\D/g, "");
+    const numero = pedido.telefone?.replace(/\D/g, "");
     const mensagem = `Olá ${pedido.nome}.\nSeu pedido da Tapicuz já está sendo preparado.\nHorário: ${pedido.horario}\nObrigado pela preferência.`;
-    const link = `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`;
+    const link = numero && numero.length >= 10
+      ? `https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`
+      : `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
     if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
       (async () => {
         try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url: link }); }
@@ -725,7 +728,39 @@ export default function AdminPainel() {
     try {
       const statusFinal = pedido.statusPagamento === "fiado" ? "fiado" : foiPago ? "pago" : "pendente";
       const mensagem = statusFinal === "fiado" ? "📒 PEDIDO CONCLUÍDO NO FIADO!" : foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!";
-      await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: statusFinal });
+
+      if (statusFinal === "fiado") {
+        const chave = `${pedido.telefone || "sem_telefone"}_${pedido.nome}`;
+        const ref = doc(db, "fiados", chave);
+        const snap = await getDoc(ref);
+        const pedidoItem = {
+          pedidoId: pedido.id,
+          data: pedido.dataCriacao || new Date().toISOString(),
+          horario: pedido.horario || "",
+          valor: pedido.valorTotal || 0,
+          itens: pedido.itens || {},
+        };
+        if (snap.exists()) {
+          const dados = snap.data();
+          await updateDoc(ref, {
+            pedidos: [...(dados.pedidos || []), pedidoItem],
+            totalDevido: (dados.totalDevido || 0) + (pedido.valorTotal || 0),
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+        } else {
+          await setDoc(ref, {
+            nome: pedido.nome,
+            telefone: pedido.telefone || "",
+            endereco: pedido.endereco || "",
+            totalDevido: pedido.valorTotal || 0,
+            pedidos: [pedidoItem],
+            pagamentos: [],
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+        }
+      }
+
+      await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: statusFinal, ...(statusFinal === "pago" && { mensagemPagamento: null }) });
       setNotificacaoCaixa(mensagem);
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       setPedidoSelecionadoParaConcluir(null);
@@ -735,7 +770,7 @@ export default function AdminPainel() {
   async function marcarComoPago(id: string) {
     if (!usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pago" });
+      await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pago", mensagemPagamento: null });
       setNotificacaoCaixa("🟢 PEDIDO MARCADO COMO PAGO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
@@ -745,7 +780,7 @@ export default function AdminPainel() {
   async function marcarPagoSemConcluir(id: string) {
     if (!usuarioLogado) return;
     try {
-      await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pago" });
+      await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pago", mensagemPagamento: null });
       setNotificacaoCaixa("🟢 PAGAMENTO MARCADO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
@@ -879,6 +914,20 @@ export default function AdminPainel() {
       setValorPagamentoFiado("");
       setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}`);
       setTimeout(() => setNotificacaoCaixa(null), 2000);
+
+      const nomeCliente = dados.nome || "";
+      const telefoneCliente = dados.telefone || "";
+      const numeroLimpo = telefoneCliente.replace(/\D/g, "");
+      if (numeroLimpo.length >= 10) {
+        const msg = `Olá ${nomeCliente}! ✅\nPagamento de R$ ${valorPago.toFixed(2).replace(".", ",")} confirmado na Tapicuz!\n${novoTotal > 0 ? `Saldo restante: R$ ${novoTotal.toFixed(2).replace(".", ",")}` : "Sua conta foi quitada! 🎉"}\nObrigado pela preferência! 🙏`;
+        const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(msg)}`;
+        if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+          (async () => {
+            try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+            catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+          })();
+        } else { window.open(url, "_blank", "noopener,noreferrer"); }
+      }
     } catch (erro) {
       console.error(erro);
       setNotificacaoCaixa("❌ Erro ao registrar pagamento");
@@ -1127,7 +1176,7 @@ export default function AdminPainel() {
     <main className="min-h-screen bg-gradient-to-br from-[#FFFAF5] via-[#FFFFFF] to-[#FFFAF5] text-[#27272A] py-6 px-3 sm:px-4 relative overflow-x-hidden">
       {/* ✅ Notificação flutuante */}
       {notificacaoCaixa && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-orange-500 text-orange-300 px-6 py-3 rounded-2xl font-black uppercase shadow-2xl animate-pulse">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-black/90 border border-orange-500 text-orange-300 px-6 py-3 rounded-2xl font-black uppercase shadow-2xl animate-pulse">
           {notificacaoCaixa}
         </div>
       )}
@@ -1642,6 +1691,18 @@ export default function AdminPainel() {
                     {nomeAbreviado(pedido.nome)}
                   </h3>
 
+                  {pedido.abaOrigem === "avulso" && (
+                    <div className="mb-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase text-center border bg-sky-50 text-sky-700 border-sky-300">
+                      Pedido Avulso
+                    </div>
+                  )}
+
+                  {pedido.mensagemPagamento && (
+                    <div className={`mb-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${pedido.mensagemPagamento === "Cliente informou que já pagou" ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-amber-50 text-amber-700 border-amber-300"}`}>
+                      {pedido.mensagemPagamento}
+                    </div>
+                  )}
+
                   <p className="text-orange-700 font-black text-base text-center mb-3">⏱ {pedido.horario}</p>
 
                   <div className="flex justify-center mb-4">
@@ -1650,7 +1711,9 @@ export default function AdminPainel() {
                         if (pedido.statusPagamento === "pendente" || !pedido.statusPagamento) {
                           marcarPagoSemConcluir(pedido.id)
                         } else if (pedido.statusPagamento === "pago") {
-                          moverParaFiado(pedido)
+                          updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado", mensagemPagamento: "Cliente ainda não pagou" });
+                           setNotificacaoCaixa("📒 FIADO!");
+                          setTimeout(() => setNotificacaoCaixa(null), 2000);
                         } else {
                           reverterPago(pedido.id)
                         }
@@ -2338,13 +2401,14 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
             </div>
             <div className="grid grid-cols-4 gap-2">
               <button
-                onClick={() => {
-                  const numero = pedido.telefone?.replace(/\D/g, "");
-                  const msg = `Olá ${pedido.nome}. Seu pedido da Tapicuz está pendente de pagamento. Valor: R$ ${pedido.valorTotal.toFixed(2).replace(".", ",")}.`;
-                  const url = numero ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-                  if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-                    (async () => { try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); } catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); } })();
-                  } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                onClick={async () => {
+                  const valor = Number(pedido.valorTotal || 0);
+                  if (valor <= 0) return;
+                  try {
+                    const dadosPix = await gerarPixCopiaECola(valor);
+                    if (!dadosPix?.payload) { alert("Erro ao gerar Pix"); return; }
+                    setPixFiadoModal({ nome: pedido.nome, valor, telefone: pedido.telefone || "", codigoPix: dadosPix.payload });
+                  } catch { alert("Erro ao gerar Pix"); }
                 }}
                 className="py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-[10px] font-black uppercase hover:bg-green-500/20 transition-all"
               >
@@ -2482,16 +2546,14 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 
                 <div className="flex gap-2 pt-1">
                   <button
-                    onClick={() => {
-                      const msg = `Olá ${pessoa.nome}, você tem um saldo pendente de R$ ${(pessoa.totalDevido || 0).toFixed(2).replace(".", ",")} na Tapicuz. Quando puder, faça o pagamento. Agradecemos!`;
-                      const numero = pessoa.telefone?.replace(/\D/g, "");
-                      const url = numero ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-                      if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
-                        (async () => {
-                          try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
-                          catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
-                        })();
-                      } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                    onClick={async () => {
+                      const valor = Number(pessoa.totalDevido || 0);
+                      if (valor <= 0) return;
+                      try {
+                        const dadosPix = await gerarPixCopiaECola(valor);
+                        if (!dadosPix?.payload) { alert("Erro ao gerar Pix"); return; }
+                        setPixFiadoModal({ nome: pessoa.nome, valor, telefone: pessoa.telefone || "", codigoPix: dadosPix.payload });
+                      } catch { alert("Erro ao gerar Pix"); }
                     }}
                     className="flex-1 px-3 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-black uppercase hover:bg-green-500/20 transition-all"
                   >
@@ -2703,6 +2765,32 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               >
                 ✅ CONCLUIR
               </button>
+              {p.statusPagamento === "pago" && (
+                <button
+                  onClick={() => {
+                    const numero = p.telefone?.replace(/\D/g, "");
+                    const msg = `Olá ${p.nome}!\nSeu pagamento no valor de R$ ${p.valorTotal.toFixed(2).replace('.', ',')} foi confirmado com sucesso!\n\nObrigado pela preferência! DEUS ABENÇOE`;
+                    const url = numero && numero.length >= 10
+                      ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`
+                      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                    if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+                      (async () => {
+                        try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                        catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+                      })();
+                    } else { window.open(url, "_blank", "noopener,noreferrer"); }
+                    setPedidoSelecionadoParaConcluir(null);
+                    const el = document.createElement('div');
+                    el.innerText = 'AVISO DE PAGAMENTO ENVIADO!';
+                    el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#10b981;color:white;font-weight:900;font-size:14px;padding:12px 24px;border-radius:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:2px solid #059669;text-transform:uppercase;letter-spacing:0.5px;';
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 2500);
+                  }}
+                  className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
+                >
+                  💰 AVISAR PAGAMENTO
+                </button>
+              )}
               <button
                 onClick={() => setSubmenuAcoes("zap")}
                 className="w-full py-5 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-base rounded-xl transition-all shadow-md"
@@ -2749,8 +2837,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
             <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
-                  const numero = p.telefone.replace(/\D/g, "");
+                  const numero = p.telefone?.replace(/\D/g, "");
                   let msg = `Olá ${p.nome}.\nSeu pedido da Tapicuz foi recebido com sucesso!\n\n*=== RESUMO DO PEDIDO ===*\n\n*CLIENTE:* ${p.nome.toUpperCase()}\n*ENDEREÇO:* ${String(p.endereco || 'NÃO INFORMADO')}\n${p.observacao ? `*OBSERVAÇÃO:* ${p.observacao}\n` : ""}*HORÁRIO:* ${p.horario}\n*PAGAMENTO:* ${p.pagamento}\n`;
                   msg += `----------------------------------------\n*ITENS DO PEDIDO*\n`;
                   let temItens = false;
@@ -2769,7 +2856,9 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
                   }
                   if (!temItens) { msg += `• NENHUM ITEM CADASTRADO\n`; }
                    msg += `----------------------------------------\n*VALOR TOTAL:* R$ ${p.valorTotal.toFixed(2).replace('.', ',')}\n\nAgradecemos  a preferência! DEUS ABENÇOE`;
-                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                  const url = numero && numero.length >= 10
+                    ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`
+                    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
                   if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
                     (async () => {
                       try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
@@ -2790,10 +2879,11 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
               </button>
               <button
                 onClick={() => {
-                  if (!p.telefone) { alert("Cliente não informou telefone."); return; }
-                  const numero = p.telefone.replace(/\D/g, "");
+                  const numero = p.telefone?.replace(/\D/g, "");
                   const msg = `*SAIU PARA ENTREGA*\n\nOlá ${p.nome}!\n\nSeu pedido da Tapicuz acabou de sair e em instantes chegará até você.\n\nAgradecemos a preferência.`;
-                  const url = `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`;
+                  const url = numero && numero.length >= 10
+                    ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`
+                    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
                   if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
                     (async () => {
                       try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
@@ -3538,6 +3628,60 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
           CANCELAR
         </button>
       </div>
+    </div>
+  </div>
+)}
+
+{/* Modal Pix Fiado */}
+{pixFiadoModal && (
+  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-white border-4 border-emerald-500 max-w-md w-full rounded-3xl p-6 text-center shadow-2xl space-y-5">
+      <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-500 text-3xl flex items-center justify-center mx-auto">📲</div>
+      <h3 className="text-xl font-black text-emerald-500 uppercase">PIX PARA {pixFiadoModal.nome}</h3>
+      <p className="text-sm text-zinc-500">Valor exato da dívida</p>
+      <p className="text-3xl font-black text-emerald-600">R$ {pixFiadoModal.valor.toFixed(2)}</p>
+
+      <div className="bg-[#FFFAF5] p-3 rounded-xl break-all text-xs text-center border max-h-20 overflow-y-auto">{pixFiadoModal.codigoPix}</div>
+
+      <div className="space-y-2">
+        <button
+          onClick={() => {
+            const numero = pixFiadoModal.telefone?.replace(/\D/g, "");
+            const msg = `Olá ${pixFiadoModal.nome}!\nSeu pedido na Tapicuz no valor de R$ ${pixFiadoModal.valor.toFixed(2).replace(".", ",")} está aguardando pagamento.\n\nOpções de pagamento:\n- Se for Pix, copie o código abaixo e envie o comprovante.\n- Se for em dinheiro, ignore o Pix e combine com a gente.\n\nObrigado!`;
+            const url = numero && numero.length >= 10
+              ? `https://wa.me/55${numero}?text=${encodeURIComponent(msg)}`
+              : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+            if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
+              (async () => {
+                try { const { AppLauncher } = await import('@capacitor/app-launcher'); await AppLauncher.openUrl({ url }); }
+                catch { const { Browser } = await import('@capacitor/browser'); await Browser.open({ url }); }
+              })();
+            } else { window.open(url, "_blank", "noopener,noreferrer"); }
+          }}
+          className="w-full py-3 bg-green-500 text-white font-black rounded-xl uppercase text-sm"
+        >
+          📲 ENVIAR AVISO DE DÉBITO
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(pixFiadoModal.codigoPix);
+              }
+              setNotificacaoCaixa("📋 Pix copiado com sucesso!");
+              setTimeout(() => setNotificacaoCaixa(null), 2500);
+            } catch { alert("Erro ao copiar"); }
+          }}
+          className="w-full py-3 bg-orange-500 text-black font-black rounded-xl uppercase text-sm"
+        >
+          📋 COPIAR PIX
+        </button>
+      </div>
+
+      <button onClick={() => setPixFiadoModal(null)}
+        className="w-full py-2 text-xs text-zinc-400 font-bold uppercase">
+        FECHAR
+      </button>
     </div>
   </div>
 )}
