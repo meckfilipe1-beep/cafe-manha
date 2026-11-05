@@ -184,7 +184,7 @@ export default function AdminPainel() {
   const [modalPagamentoFiado, setModalPagamentoFiado] = useState<{ pessoa: any; } | null>(null);
   const [valorPagamentoFiado, setValorPagamentoFiado] = useState("");
   const [fiadoExpandido, setFiadoExpandido] = useState<string | null>(null);
-  const [fiadoParaExcluir, setFiadoParaExcluir] = useState<{ id: string; nome: string } | null>(null);
+  const [fiadoParaExcluir, setFiadoParaExcluir] = useState<{ id: string; ids: string[]; nome: string } | null>(null);
   const [pixFiadoModal, setPixFiadoModal] = useState<{ nome: string; valor: number; telefone: string; codigoPix: string } | null>(null);
   const [valorDespesaInput, setValorDespesaInput] = useState("");
   const [totalDespesasAcumuladas, setTotalDespesasAcumuladas] = useState(0);
@@ -453,6 +453,16 @@ export default function AdminPainel() {
     }
     return acc;
   }, []);
+
+  // ============================================================
+  // HELPERS FIADO — fonte única de verdade p/ chave e identidade
+  // ============================================================
+  const chaveFiado = (nome: string, telefone: string) => {
+    const tel = (telefone || "").replace(/\D/g, "");
+    return `${tel ? tel : "sem_telefone"}_${(nome || "").trim().toUpperCase()}`;
+  };
+  const chaveGrupoFiado = (nome: string, telefone: string) =>
+    `${(nome || "").trim().toUpperCase()}|${(telefone || "").replace(/\D/g, "")}`;
 
   const dispararFluxoConclusaoAvulso = (e: React.FormEvent) => {
     e.preventDefault();
@@ -833,6 +843,7 @@ export default function AdminPainel() {
     if (!usuarioLogado) return;
     try {
       await updateDoc(doc(db, "pedidos", id), { concluido: true, statusPagamento: "pago", mensagemPagamento: null });
+      await removerPedidoDosFiados({ id });
       setNotificacaoCaixa("🟢 PEDIDO MARCADO COMO PAGO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
@@ -844,15 +855,22 @@ export default function AdminPainel() {
     try {
       // Mantém concluido=false — entra no caixa e na demanda, mas continua em andamento
       await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pago", mensagemPagamento: null });
+      await removerPedidoDosFiados({ id });
       setNotificacaoCaixa("🟢 PAGAMENTO MARCADO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
+  }
+
+  async function remarcarPago(id: string) {
+    // alias p/ busca histórica
+    await marcarPagoSemConcluir(id);
   }
 
   async function reverterPago(id: string) {
     if (!usuarioLogado) return;
     try {
       await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pendente" });
+      await removerPedidoDosFiados({ id });
       setNotificacaoCaixa("🟡 MOVIDO PARA PENDENTE!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     } catch (erro) { console.error(erro); }
@@ -862,6 +880,7 @@ export default function AdminPainel() {
     if (!usuarioLogado) return;
     try {
       await deleteDoc(doc(db, "pedidos", id));
+      await removerPedidoDosFiados({ id });
       if (pedidoDetalhado?.id === id) setPedidoDetalhado(null);
     } catch (error) { console.error(error); }
   }
@@ -875,6 +894,7 @@ export default function AdminPainel() {
     if (!usuarioLogado || !pedidoParaEstornar?.id) return;
     try {
       await updateDoc(doc(db, "pedidos", pedidoParaEstornar.id), { estornado: true });
+      await removerPedidoDosFiados(pedidoParaEstornar);
       if (pedidoDetalhado?.id === pedidoParaEstornar.id) setPedidoDetalhado(null);
     } catch (error) { console.error("Erro ao estornar pedido:", error); }
     setPedidoParaEstornar(null);
@@ -883,7 +903,7 @@ export default function AdminPainel() {
   async function moverParaFiado(pedido: any) {
     if (!usuarioLogado) return;
     try {
-      const chave = `${(pedido.telefone || "sem_telefone").replace(/\D/g, "")}_${(pedido.nome || "").trim().toUpperCase()}`;
+      const chave = chaveFiado(pedido.nome || "", pedido.telefone || "");
       const ref = doc(db, "fiados", chave);
       const snap = await getDoc(ref);
 
@@ -898,6 +918,15 @@ export default function AdminPainel() {
 
       if (snap.exists()) {
         const dados = snap.data();
+        const jaExiste = (dados.pedidos || []).some((p: any) => p.pedidoId === pedido.id);
+        if (jaExiste) {
+          // Pedido já está no fiado — só garante o status e não duplica o valor
+          await updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado" });
+          setNotificacaoCaixa("📒 JÁ ESTÁ NO FIADO!");
+          setTimeout(() => setNotificacaoCaixa(null), 2000);
+          if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
+          return;
+        }
         await updateDoc(ref, {
           pedidos: [...(dados.pedidos || []), pedidoItem],
           totalDevido: (dados.totalDevido || 0) + (pedido.valorTotal || 0),
@@ -926,11 +955,46 @@ export default function AdminPainel() {
     }
   }
 
+  // Remove a referência a um pedido dentro de TODOS os fiados do cliente
+  // (nunca vira pendente/fiado de novo se o pedido for pago/excluído)
+  async function removerPedidoDosFiados(pedido: any) {
+    try {
+      const snapTodos = await getDocs(collection(db, "fiados"));
+      for (const d of snapTodos.docs) {
+        const dados = d.data() as any;
+        const pedidosAtual = dados.pedidos || [];
+        const pedidosNovos = pedidosAtual.filter((p: any) => p.pedidoId !== pedido.id);
+        if (pedidosNovos.length === pedidosAtual.length) continue;
+        const somaPedidos = pedidosNovos.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0);
+        const totalPago = (dados.pagamentos || []).reduce((s: number, pg: any) => s + (Number(pg.valor) || 0), 0);
+        const novoTotal = Math.max(0, Math.round((somaPedidos - totalPago) * 100) / 100);
+        if (novoTotal <= 0) {
+          await deleteDoc(doc(db, "fiados", d.id));
+        } else {
+          await updateDoc(doc(db, "fiados", d.id), {
+            pedidos: pedidosNovos,
+            totalDevido: novoTotal,
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (e) { console.error("Erro ao remover pedido dos fiados:", e); }
+  }
+
   async function confirmarExcluirFiado() {
     if (!usuarioLogado || !fiadoParaExcluir) return;
     try {
-      await deleteDoc(doc(db, "fiados", fiadoParaExcluir.id));
-      setNotificacaoCaixa(`🗑️ Conta fiada de ${fiadoParaExcluir.nome} excluída`);
+      const pessoa = fiadosAgrupados.find((p: any) => p.id === fiadoParaExcluir.id) || null;
+      const idsRaw: string[] = (pessoa && (pessoa as any)._ids) || fiadoParaExcluir.ids || [fiadoParaExcluir.id];
+      const idsUnicos = [...new Set(idsRaw)];
+      let removidos = 0;
+      for (const id of idsUnicos) {
+        try {
+          await deleteDoc(doc(db, "fiados", id));
+          removidos++;
+        } catch {}
+      }
+      setNotificacaoCaixa(`🗑️ Conta fiada de ${fiadoParaExcluir.nome} excluída (${removidos} documento(s))`);
       setTimeout(() => setNotificacaoCaixa(null), 3000);
     } catch (erro) {
       console.error(erro);
@@ -943,85 +1007,66 @@ export default function AdminPainel() {
   async function registrarPagamentoFiado(pessoaId: string, valorPago: number, idsAgrupados?: string[], nomeAgrupado?: string) {
     if (!usuarioLogado || !valorPago || valorPago <= 0) return;
     try {
-      // Se foi pelo grupo, abate de todos os fiados da pessoa e some no entradasFiado uma só vez
-      if (idsAgrupados && idsAgrupados.length > 1) {
-        let restante = valorPago;
-        for (const id of idsAgrupados) {
-          if (restante <= 0) break;
-          const refG = doc(db, "fiados", id);
-          const snapG = await getDoc(refG);
-          if (!snapG.exists()) continue;
-          const dad = snapG.data();
-          const devido = Number(dad.totalDevido) || 0;
-          if (devido <= 0) continue;
-          const abatimento = Math.min(devido, restante);
-          const restoG = Math.max(0, devido - abatimento);
-          await updateDoc(refG, {
-            totalDevido: restoG,
-            pagamentos: [...(dad.pagamentos || []), { valor: abatimento, data: new Date().toISOString(), observacao: "" }],
-            ultimaAtualizacao: new Date().toISOString(),
-          });
-          restante -= abatimento;
-          if (restoG <= 0 && dad.pedidos) {
-            for (const p of dad.pedidos) {
-              try { await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" }); } catch {}
-            }
-            await deleteDoc(refG);
+      // ✅ REGRA ÚNICA: paga em TODOS os documentos do cliente (grouped + single).
+      // Nunca deixa valor velho para voltar — e soma no caixa uma só vez.
+      const ids = idsAgrupados && idsAgrupados.length > 0 ? [...new Set(idsAgrupados)] : [pessoaId];
+      let restante = valorPago;
+      let nomeCliente = nomeAgrupado || "";
+      let telefoneCliente = "";
+      let totalRestanteFinal = 0;
+
+      for (const id of ids) {
+        if (restante <= 0) break;
+        const refG = doc(db, "fiados", id);
+        const snapG = await getDoc(refG);
+        if (!snapG.exists()) continue;
+        const dad = snapG.data() as any;
+        if (!nomeCliente) nomeCliente = dad.nome || "";
+        if (!telefoneCliente) telefoneCliente = dad.telefone || "";
+        const devido = Number(dad.totalDevido) || 0;
+        if (devido <= 0) continue;
+        const abatimento = Math.min(devido, restante);
+        const restoG = Math.max(0, Math.round((devido - abatimento) * 100) / 100);
+        await updateDoc(refG, {
+          totalDevido: restoG,
+          pagamentos: [...(dad.pagamentos || []), { valor: abatimento, data: new Date().toISOString(), observacao: "" }],
+          ultimaAtualizacao: new Date().toISOString(),
+        });
+        restante -= abatimento;
+        totalRestanteFinal = restoG;
+        if (restoG <= 0 && dad.pedidos) {
+          for (const p of dad.pedidos) {
+            try { await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" }); } catch {}
           }
+          await deleteDoc(refG);
+          totalRestanteFinal = 0;
         }
-        // Soma no entradasFiado uma só vez
-        const novaEntradaFiadoG = totalEntradasFiado + valorPago;
-        setTotalEntradasFiado(novaEntradaFiadoG);
-        await setDoc(doc(db, "configuracoes", "funcionamento"), { entradasFiado: novaEntradaFiadoG }, { merge: true });
-
-        setModalPagamentoFiado(null);
-        setValorPagamentoFiado("");
-        setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}${nomeAgrupado ? ` de ${nomeAgrupado}` : ""}`);
-        setTimeout(() => setNotificacaoCaixa(null), 2000);
-        return;
       }
-
-      const ref = doc(db, "fiados", pessoaId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
-
-      const dados = snap.data();
-      const novoTotal = Math.max(0, (dados.totalDevido || 0) - valorPago);
-
-      await updateDoc(ref, {
-        totalDevido: novoTotal,
-        pagamentos: [
-          ...(dados.pagamentos || []),
-          { valor: valorPago, data: new Date().toISOString(), observacao: "" }
-        ],
-        ultimaAtualizacao: new Date().toISOString(),
-      });
+      // Recalcula o saldo total após o lote (caso o último doc não tenha sido zerado)
+      try {
+        const snapTodos = await getDocs(collection(db, "fiados"));
+        const chaveAlvo = nomeCliente ? chaveGrupoFiado(nomeCliente, telefoneCliente) : "";
+        let saldo = 0;
+        for (const d of snapTodos.docs) {
+          const dd = d.data() as any;
+          if (chaveAlvo && chaveGrupoFiado(dd.nome || "", dd.telefone || "") !== chaveAlvo) continue;
+          saldo += Number(dd.totalDevido) || 0;
+        }
+        totalRestanteFinal = saldo;
+      } catch {}
 
       const novaEntradaFiado = totalEntradasFiado + valorPago;
       setTotalEntradasFiado(novaEntradaFiado);
       await setDoc(doc(db, "configuracoes", "funcionamento"), { entradasFiado: novaEntradaFiado }, { merge: true });
 
-      if (novoTotal <= 0) {
-        if (dados.pedidos) {
-          for (const p of dados.pedidos) {
-            try {
-              await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" });
-            } catch {}
-          }
-        }
-        await deleteDoc(ref);
-      }
-
       setModalPagamentoFiado(null);
       setValorPagamentoFiado("");
-      setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}`);
+      setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}${nomeCliente ? ` de ${nomeCliente}` : ""}`);
       setTimeout(() => setNotificacaoCaixa(null), 2000);
 
-      const nomeCliente = dados.nome || "";
-      const telefoneCliente = dados.telefone || "";
-      const numeroLimpo = telefoneCliente.replace(/\D/g, "");
-      if (numeroLimpo.length >= 10) {
-        const msg = `Olá ${nomeCliente}! ✅\nPagamento de R$ ${valorPago.toFixed(2).replace(".", ",")} confirmado na Tapicuz!\n${novoTotal > 0 ? `Saldo restante: R$ ${novoTotal.toFixed(2).replace(".", ",")}` : "Sua conta foi quitada! 🎉"}\nObrigado pela preferência! 🙏`;
+      const numeroLimpo = (telefoneCliente || "").replace(/\D/g, "");
+      if (numeroLimpo.length >= 10 && nomeCliente) {
+        const msg = `Olá ${nomeCliente}! ✅\nPagamento de R$ ${valorPago.toFixed(2).replace(".", ",")} confirmado na Tapicuz!\n${totalRestanteFinal > 0 ? `Saldo restante: R$ ${totalRestanteFinal.toFixed(2).replace(".", ",")}` : "Sua conta foi quitada! 🎉"}\nObrigado pela preferência! 🙏`;
         const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(msg)}`;
         if (typeof window !== "undefined" && (window as any).Capacitor?.isNativePlatform?.()) {
           (async () => {
@@ -1200,10 +1245,20 @@ export default function AdminPainel() {
       const snapFiados = await getDocs(collection(db, "fiados"));
       let corrigidos = 0;
       for (const d of snapFiados.docs) {
-        const dados = d.data();
+        const dados = d.data() as any;
         const pedidosValidos = (dados.pedidos || []).filter((p: any) => idsPedidosExistentes.has(p.pedidoId));
-        if (pedidosValidos.length !== (dados.pedidos || []).length) {
-          await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos });
+        // Recalcula o total a partir dos pedidos válidos (ignora totalDevido velho/duplicado)
+        const somaPedidos = pedidosValidos.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0);
+        const totalPago = (dados.pagamentos || []).reduce((s: number, pg: any) => s + (Number(pg.valor) || 0), 0);
+        const novoTotal = Math.max(0, Math.round((somaPedidos - totalPago) * 100) / 100);
+        // Se acabou a dívida, apaga o documento — nunca deixa para "voltar"
+        if (novoTotal <= 0) {
+          await deleteDoc(doc(db, "fiados", d.id));
+          corrigidos++;
+          continue;
+        }
+        if (pedidosValidos.length !== (dados.pedidos || []).length || novoTotal !== Number(dados.totalDevido)) {
+          await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos, totalDevido: novoTotal });
           corrigidos++;
         }
       }
@@ -2677,7 +2732,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
 
                 <div className="flex justify-center pt-1">
                   <button
-                    onClick={() => setFiadoParaExcluir({ id: pessoa.id, nome: pessoa.nome })}
+                    onClick={() => setFiadoParaExcluir({ id: pessoa.id, ids: (pessoa as any)._ids || [pessoa.id], nome: pessoa.nome })}
                     className="px-4 py-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl text-xs font-black uppercase flex items-center gap-1"
                     title="Excluir conta fiada"
                   >
