@@ -320,7 +320,8 @@ export default function AdminPainel() {
     const unsubscribe = onSnapshot(qPedidos, (snap) => {
       const listaPedidos: any[] = [];
       snap.forEach((doc) => listaPedidos.push({ id: doc.id, ...doc.data() }));
-      listaPedidos.sort((a, b) => a.horario.localeCompare(b.horario));
+      // Horário pode vir undefined em pedidos antigos — não pode quebrar a soma
+      listaPedidos.sort((a, b) => String(a.horario || "").localeCompare(String(b.horario || "")));
       const qtdAtivos = listaPedidos.filter(p => !p.concluido).length;
       if (ultimoTotalPedidos.current > 0 && qtdAtivos > ultimoTotalPedidos.current) tocarSomPedido();
       ultimoTotalPedidos.current = qtdAtivos;
@@ -348,11 +349,21 @@ export default function AdminPainel() {
       setValorTotalAvulso(valor.toFixed(2));
       return;
     }
+    // Fallback — nunca faz o item virar R$ 0
+    const PREÇOS_FIXOS: Record<string, number> = {
+      tapiocaMolhada: 8.00, tapiocaManteiga: 6.00, tapiocaQueijo: 8.00,
+      tapiocaOvo: 8.00, tapiocaQueijoOvo: 10.00,
+      cuscuzMilho: 5.00, cuscuzArroz: 6.00, cuscuzMilhoArroz: 6.00, cafe: 4.00,
+    }
+    const precoDe = (chave: string) => {
+      const p = produtos.find(p => p.chave === chave);
+      return p && p.preco != null ? p.preco : (PREÇOS_FIXOS[chave] ?? 0);
+    }
     let subtotal = 0;
     let qtdComidas = 0;
     let qtdCafes = itensAvulsos.cafe;
     Object.entries(itensAvulsos).forEach(([key, qtd]) => {
-      const preco = produtos.find(p => p.chave === key)?.preco || 0;
+      const preco = precoDe(key);
       subtotal += preco * Number(qtd);
       if (key !== "cafe") qtdComidas += Number(qtd);
     });
@@ -362,16 +373,17 @@ export default function AdminPainel() {
       let cafesUsados = 0;
       Object.entries(itensAvulsos).forEach(([key, qtd]) => {
         if (key !== "cafe" && Number(qtd) > 0 && cafesUsados < qtdCombos) {
-          const precoItem = produtos.find(p => p.chave === key)?.preco || 0;
-          const precoCafe = produtos.find(p => p.chave === "cafe")?.preco || 0;
+          const precoItem = precoDe(key);
+          const precoCafe = precoDe("cafe");
           const qtdUsar = Math.min(Number(qtd), qtdCombos - cafesUsados);
-          desconto += qtdUsar * ((precoItem + precoCafe) - 10);
+          const descontoUm = (precoItem + precoCafe) - 10;
+          if (descontoUm > 0) desconto += qtdUsar * descontoUm;
           cafesUsados += qtdUsar;
         }
       });
       subtotal -= desconto;
     }
-    setValorTotalAvulso(subtotal.toFixed(2));
+    setValorTotalAvulso((Math.round(subtotal * 100) / 100).toFixed(2));
   }, [itensAvulsos, produtos, modoValorLivreAvulso, valorLivreAvulso]);
 
   // ==============================================
@@ -404,19 +416,40 @@ export default function AdminPainel() {
   const pedidosAtivos = pedidos.filter(p => !p.concluido);
   const pedidosPendentes = pedidos.filter(p => p.concluido && p.statusPagamento === "pendente");
   const pedidosPagos = pedidos.filter(p => p.concluido && p.statusPagamento === "pago" && !p.estornado);
-  const faturamentoTotal = pedidosPagos.reduce((acc, p) => acc + p.valorTotal, 0) + totalEntradasFiado;
-  const totalPix = pedidosPagos.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + p.valorTotal, 0);
-  const totalDinheiro = pedidosPagos.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + p.valorTotal, 0);
-  const saldoLiquidoAtual = faturamentoTotal - totalDespesasAcumuladas;
+  // Fallback só quando o banco não tem o produto — nunca faz o item virar R$ 0
+  const PREÇOS_FIXOS: Record<string, number> = {
+    tapiocaMolhada: 8.00, tapiocaManteiga: 6.00, tapiocaQueijo: 8.00,
+    tapiocaOvo: 8.00, tapiocaQueijoOvo: 10.00,
+    cuscuzMilho: 5.00, cuscuzArroz: 6.00, cuscuzMilhoArroz: 6.00, cafe: 4.00,
+  }
+  const precoDe = (chave: string) => {
+    const p = produtos.find(prod => prod.chave === chave);
+    return p && p.preco != null ? p.preco : (PREÇOS_FIXOS[chave] ?? 0);
+  }
 
+  // Totais — pago sem concluir entra no caixa, sem duplicar fiado
+  const valorDe = (p: any) => Number(p.valorTotal) || 0;
+  const pedidosPagosParaCaixa = pedidos.filter(p => !p.estornado && p.statusPagamento === "pago");
+  const vendasPagosSemFiado = pedidosPagosParaCaixa.filter(p => p.statusPagamento !== "fiado");
+  const faturamentoTotal = vendasPagosSemFiado.reduce((acc, p) => acc + valorDe(p), 0);
+  const totalPix = vendasPagosSemFiado.filter(p => p.pagamento === "Pix").reduce((acc, p) => acc + valorDe(p), 0);
+  const totalDinheiro = vendasPagosSemFiado.filter(p => p.pagamento === "Dinheiro").reduce((acc, p) => acc + valorDe(p), 0);
+  const saldoLiquidoAtual = faturamentoTotal + totalEntradasFiado - totalDespesasAcumuladas;
+
+  // Agrupa fiados por nome E telefone — "Uma pessoa, uma dívida"
   const fiadosAgrupados = fiados.filter(f => f.totalDevido > 0).reduce((acc: any[], f) => {
-    const existente = acc.find(a => a.nome?.trim()?.toUpperCase() === f.nome?.trim()?.toUpperCase());
+    const chaveNome = f.nome?.trim()?.toUpperCase() || "";
+    const chaveTel = (f.telefone || "").replace(/\D/g, "");
+    const chave = `${chaveNome}|${chaveTel}`;
+    const existente = acc.find(a => a._chave === chave);
     if (existente) {
       existente.totalDevido = (existente.totalDevido || 0) + (f.totalDevido || 0);
       existente.pedidos = [...(existente.pedidos || []), ...(f.pedidos || [])];
       existente.pagamentos = [...(existente.pagamentos || []), ...(f.pagamentos || [])];
+      // Memória da dívida agrupada — total antigo junto + novas dívidas
+      existente._ids.push(f.id);
     } else {
-      acc.push({ ...f, id: f.id || f.nome });
+      acc.push({ ...f, id: f.id || f.nome, _chave: chave, _ids: [f.id] });
     }
     return acc;
   }, []);
@@ -439,9 +472,13 @@ export default function AdminPainel() {
     } else { window.open(link, "_blank", "noopener,noreferrer"); }
   }
 
-  function pegarPreco(chave: string): number {
-    const p = produtos.find(pr => pr.chave === chave);
-    return p?.preco || 0;
+  function pegarPreco(chave: string, pedido?: any): number {
+    // Preço cobrado no pedido (snapshot) — verdade do pedido, não o preço de hoje
+    if (pedido?.precosSnapshot?.[chave] != null) {
+      const snap = Number(pedido.precosSnapshot[chave]);
+      return isNaN(snap) ? 0 : snap;
+    }
+    return precoDe(chave);
   }
 
   function formatarNomeItem(nomeChave: string) {
@@ -539,10 +576,9 @@ export default function AdminPainel() {
           Object.entries(itensCombinados).filter(([_, qtd]) => (qtd as number) > 0)
         );
 
-        let novoTotal = 0;
+        let novoSubtotal = 0;
         Object.entries(itensOnly).forEach(([chave, qtd]) => {
-          const preco = produtos.find(p => p.chave === chave)?.preco || 0;
-          novoTotal += preco * Number(qtd);
+          novoSubtotal += precoDe(chave) * Number(qtd);
         });
 
         let qtdComidas = 0;
@@ -557,19 +593,29 @@ export default function AdminPainel() {
           let cafesUsados = 0;
           Object.entries(itensOnly).forEach(([key, qtd]) => {
             if (key !== "cafe" && Number(qtd) > 0 && cafesUsados < qtdCombos) {
-              const precoItem = produtos.find(p => p.chave === key)?.preco || 0;
-              const precoCafe = produtos.find(p => p.chave === "cafe")?.preco || 0;
+              const precoItem = precoDe(key);
+              const precoCafe = precoDe("cafe");
               const qtdUsar = Math.min(Number(qtd), qtdCombos - cafesUsados);
-              desconto += qtdUsar * ((precoItem + precoCafe) - 10);
+              const descontoUm = (precoItem + precoCafe) - 10;
+              if (descontoUm > 0) desconto += qtdUsar * descontoUm;
               cafesUsados += qtdUsar;
             }
           });
-          novoTotal -= desconto;
+          novoSubtotal -= desconto;
         }
+
+        const novoTotal = Math.round(Math.max(0, novoSubtotal) * 100) / 100;
+
+        // Snapshot dos preços atuais (itens antigos de cliente mantêm o que foi cobrado)
+        const precosSnapshotExistente: { [key: string]: number } = { ...((pedidoExistente.data as any).precosSnapshot || {}) };
+        Object.entries(itensOnly).forEach(([chave]) => {
+          if (precosSnapshotExistente[chave] == null) precosSnapshotExistente[chave] = precoDe(chave);
+        });
 
         await updateDoc(doc(db, "pedidos", pedidoExistente.id), {
           itens: itensOnly,
-          valorTotal: Math.max(0, novoTotal),
+          valorTotal: novoTotal,
+          precosSnapshot: precosSnapshotExistente,
           observacao: observacaoAvulso || pedidoExistente.data.observacao || "",
           horario: horarioAvulso || pedidoExistente.data.horario || "",
           pagamento: pagamentoAvulso || pedidoExistente.data.pagamento || "Pix",
@@ -583,7 +629,7 @@ export default function AdminPainel() {
         notificarPedido({
           nome: nomeAvulso,
           horario: horarioAvulso || pedidoExistente.data.horario || "",
-          valorTotal: Math.max(0, novoTotal),
+          valorTotal: novoTotal,
           pedidoId: pedidoExistente.id,
           itens: itensOnly,
           pagamento: pagamentoAvulso || pedidoExistente.data.pagamento || "Pix",
@@ -595,6 +641,12 @@ export default function AdminPainel() {
 
         setNotificacaoCaixa(`✅ Itens agrupados ao pedido existente de ${nomeAvulso}!`);
       } else {
+        // Snapshot dos preços cobrados
+        const precosSnapshot: { [key: string]: number } = {}
+        Object.entries(itensNovos).forEach(([chave, qtd]) => {
+          if (Number(qtd) > 0) precosSnapshot[chave] = precoDe(chave)
+        })
+
         const novoPedido = {
           nome: nomeAvulso,
           telefone: whatsappAvulso || "",
@@ -605,6 +657,7 @@ export default function AdminPainel() {
           troco: trocoAvulsoCalculado > 0 ? trocoAvulsoCalculado : 0,
           valorTotal: valorTotalAvulsoNumerico,
           itens: itensNovos,
+          precosSnapshot,
           statusPagamento: status === "pago" ? "pago" : status === "fiado" ? "fiado" : "pendente",
           concluido: status === "pago" || status === "fiado",
           dataCriacao: new Date(),
@@ -631,29 +684,37 @@ export default function AdminPainel() {
       }
 
       if (status === "fiado" && pedidoIdParaFiado) {
-        const keyFiado = `${whatsappAvulso || "sem_telefone"}_${nomeAvulso}`;
+        // Valor do fiado = TOTAL do pedido agrupado (não só os itens novos)
+        const pedidoDoc = await getDoc(doc(db, "pedidos", pedidoIdParaFiado));
+        const pedidoData: any = pedidoDoc.exists() ? pedidoDoc.data() : {};
+        const valorFiado = Number(pedidoData.valorTotal) || valorTotalAvulsoNumerico;
+        const itensFiado = pedidoData.itens || itensNovos;
+        const precosFiado = pedidoData.precosSnapshot || {};
+
+        const keyFiado = `${(whatsappAvulso || pedidoData.telefone || "sem_telefone").replace(/\D/g, "")}_${nomeAvulso.trim().toUpperCase()}`;
         const refFiado = doc(db, "fiados", keyFiado);
         const snapFiado = await getDoc(refFiado);
         const pedidoItem = {
           pedidoId: pedidoIdParaFiado,
           data: new Date().toISOString(),
           horario: horarioAvulso,
-          valor: valorTotalAvulsoNumerico,
-          itens: itensNovos,
+          valor: valorFiado,
+          itens: itensFiado,
+          precosSnapshot: precosFiado,
         };
         if (snapFiado.exists()) {
           const dataFiado = snapFiado.data();
           await updateDoc(refFiado, {
             pedidos: [...(dataFiado.pedidos || []), pedidoItem],
-            totalDevido: (dataFiado.totalDevido || 0) + valorTotalAvulsoNumerico,
+            totalDevido: (dataFiado.totalDevido || 0) + valorFiado,
             ultimaAtualizacao: new Date().toISOString(),
           });
         } else {
           await setDoc(refFiado, {
             nome: nomeAvulso,
-            telefone: whatsappAvulso || "",
+            telefone: whatsappAvulso || pedidoData.telefone || "",
             endereco: `${ruaAvulso || ""}${numeroAvulso ? `, Nº ${numeroAvulso}` : ""}${referenciaAvulso ? ` - ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
-            totalDevido: valorTotalAvulsoNumerico,
+            totalDevido: valorFiado,
             pedidos: [pedidoItem],
             pagamentos: [],
             ultimaAtualizacao: new Date().toISOString(),
@@ -730,7 +791,7 @@ export default function AdminPainel() {
       const mensagem = statusFinal === "fiado" ? "📒 PEDIDO CONCLUÍDO NO FIADO!" : foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!";
 
       if (statusFinal === "fiado") {
-        const chave = `${pedido.telefone || "sem_telefone"}_${pedido.nome}`;
+        const chave = `${(pedido.telefone || "sem_telefone").replace(/\D/g, "")}_${(pedido.nome || "").trim().toUpperCase()}`;
         const ref = doc(db, "fiados", chave);
         const snap = await getDoc(ref);
         const pedidoItem = {
@@ -739,6 +800,7 @@ export default function AdminPainel() {
           horario: pedido.horario || "",
           valor: pedido.valorTotal || 0,
           itens: pedido.itens || {},
+          precosSnapshot: pedido.precosSnapshot || {},
         };
         if (snap.exists()) {
           const dados = snap.data();
@@ -780,6 +842,7 @@ export default function AdminPainel() {
   async function marcarPagoSemConcluir(id: string) {
     if (!usuarioLogado) return;
     try {
+      // Mantém concluido=false — entra no caixa e na demanda, mas continua em andamento
       await updateDoc(doc(db, "pedidos", id), { statusPagamento: "pago", mensagemPagamento: null });
       setNotificacaoCaixa("🟢 PAGAMENTO MARCADO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
@@ -820,7 +883,7 @@ export default function AdminPainel() {
   async function moverParaFiado(pedido: any) {
     if (!usuarioLogado) return;
     try {
-      const chave = `${pedido.telefone || "sem_telefone"}_${pedido.nome}`;
+      const chave = `${(pedido.telefone || "sem_telefone").replace(/\D/g, "")}_${(pedido.nome || "").trim().toUpperCase()}`;
       const ref = doc(db, "fiados", chave);
       const snap = await getDoc(ref);
 
@@ -830,6 +893,7 @@ export default function AdminPainel() {
         horario: pedido.horario || "",
         valor: pedido.valorTotal || 0,
         itens: pedido.itens || {},
+        precosSnapshot: pedido.precosSnapshot || {},
       };
 
       if (snap.exists()) {
@@ -876,9 +940,47 @@ export default function AdminPainel() {
     setFiadoParaExcluir(null);
   }
 
-  async function registrarPagamentoFiado(pessoaId: string, valorPago: number) {
+  async function registrarPagamentoFiado(pessoaId: string, valorPago: number, idsAgrupados?: string[], nomeAgrupado?: string) {
     if (!usuarioLogado || !valorPago || valorPago <= 0) return;
     try {
+      // Se foi pelo grupo, abate de todos os fiados da pessoa e some no entradasFiado uma só vez
+      if (idsAgrupados && idsAgrupados.length > 1) {
+        let restante = valorPago;
+        for (const id of idsAgrupados) {
+          if (restante <= 0) break;
+          const refG = doc(db, "fiados", id);
+          const snapG = await getDoc(refG);
+          if (!snapG.exists()) continue;
+          const dad = snapG.data();
+          const devido = Number(dad.totalDevido) || 0;
+          if (devido <= 0) continue;
+          const abatimento = Math.min(devido, restante);
+          const restoG = Math.max(0, devido - abatimento);
+          await updateDoc(refG, {
+            totalDevido: restoG,
+            pagamentos: [...(dad.pagamentos || []), { valor: abatimento, data: new Date().toISOString(), observacao: "" }],
+            ultimaAtualizacao: new Date().toISOString(),
+          });
+          restante -= abatimento;
+          if (restoG <= 0 && dad.pedidos) {
+            for (const p of dad.pedidos) {
+              try { await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" }); } catch {}
+            }
+            await deleteDoc(refG);
+          }
+        }
+        // Soma no entradasFiado uma só vez
+        const novaEntradaFiadoG = totalEntradasFiado + valorPago;
+        setTotalEntradasFiado(novaEntradaFiadoG);
+        await setDoc(doc(db, "configuracoes", "funcionamento"), { entradasFiado: novaEntradaFiadoG }, { merge: true });
+
+        setModalPagamentoFiado(null);
+        setValorPagamentoFiado("");
+        setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}${nomeAgrupado ? ` de ${nomeAgrupado}` : ""}`);
+        setTimeout(() => setNotificacaoCaixa(null), 2000);
+        return;
+      }
+
       const ref = doc(db, "fiados", pessoaId);
       const snap = await getDoc(ref);
       if (!snap.exists()) return;
@@ -1146,22 +1248,26 @@ export default function AdminPainel() {
     }
   }
 
-  const demandasProducao = {
-    tapiocaMolhada: 0,
-    tapiocaManteiga: 0,
-    tapiocaQueijo: 0,
-    tapiocaOvo: 0,
-    tapiocaQueijoOvo: 0,
-    cuscuzMilho: 0,
-    cuscuzArroz: 0,
-    cuscuzMilhoArroz: 0,
-    cafe: 0,
-  };
+  // Demanda: tudo que ainda precisa ser feito (em andamento + pendência + pago sem concluir)
+  const demandasProducao: { [key: string]: number } = {};
 
-  pedidosAtivos.forEach((pedido) => {
-    Object.keys(demandasProducao).forEach((item) => {
-      demandasProducao[item as keyof typeof demandasProducao] += pedido.itens?.[item as keyof typeof pedido.itens] || 0;
-    });
+  const pedidosParaDemanda = pedidos.filter((pedido: any) => {
+    if (pedido.estornado) return false;
+    if (!pedido.concluido) return true;                       // em andamento
+    if (pedido.concluido && pedido.statusPagamento === "pendente") return true;
+    if (!pedido.concluido && pedido.statusPagamento === "pago") return true; // pago, mas ainda não concluído
+    return false;
+  });
+
+  pedidosParaDemanda.forEach((pedido: any) => {
+    if (pedido.itens && typeof pedido.itens === "object") {
+      Object.entries(pedido.itens).forEach(([chave, qtd]: any) => {
+        const qtdNum = Number(qtd);
+        if (!isNaN(qtdNum) && qtdNum > 0) {
+          demandasProducao[chave] = (demandasProducao[chave] || 0) + qtdNum;
+        }
+      });
+    }
   });
 
   const handleSalvarTurno = () => {
@@ -1711,9 +1817,8 @@ export default function AdminPainel() {
                         if (pedido.statusPagamento === "pendente" || !pedido.statusPagamento) {
                           marcarPagoSemConcluir(pedido.id)
                         } else if (pedido.statusPagamento === "pago") {
-                          updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado", mensagemPagamento: "Cliente ainda não pagou" });
-                           setNotificacaoCaixa("📒 FIADO!");
-                          setTimeout(() => setNotificacaoCaixa(null), 2000);
+                          // Toggle pago → fiado com baixa no fiado, senão o financeiro duplica
+                          moverParaFiado(pedido)
                         } else {
                           reverterPago(pedido.id)
                         }
@@ -2618,7 +2723,7 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
         <button
           onClick={() => {
             const valor = parseFloat(valorPagamentoFiado);
-            if (valor > 0) registrarPagamentoFiado(modalPagamentoFiado.pessoa.id, valor);
+            if (valor > 0) registrarPagamentoFiado(modalPagamentoFiado.pessoa.id, valor, (modalPagamentoFiado.pessoa as any)._ids, modalPagamentoFiado.pessoa.nome);
           }}
           disabled={!valorPagamentoFiado || parseFloat(valorPagamentoFiado) <= 0}
           className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white font-black uppercase text-sm rounded-xl transition-all disabled:opacity-50"
@@ -2974,22 +3079,31 @@ setTimeout(() => setMostrarModalCopiado(false), 2000);
     </div>
 
     {(() => {
-      const todosPedidos = [
-        ...pedidosPagos,
-        ...pedidosPendentes
-      ]
+      // Sem duplicar: o mesmo pedido não pode aparecer 2x se os filtros mudarem
+      const porId = new Map<string, any>();
+      [...pedidosPagos, ...pedidosPendentes, ...pedidosAtivos].forEach(p => porId.set(p.id, p));
+      const todosPedidos = Array.from(porId.values())
+        .filter(p => !p.estornado && p.statusPagamento !== "fiado");
       const dadosRanking: { [key: string]: { nome: string; icone: string; qtd: number; valor: number } } = {};
 
       produtos.forEach(prod => {
         dadosRanking[prod.chave] = { nome: prod.nome, icone: prod.icone, qtd: 0, valor: 0 };
       });
 
-      todosPedidos.forEach(ped => {
+      todosPedidos.forEach((ped: any) => {
+        if (!ped.itens || typeof ped.itens !== "object") return;
         Object.entries(ped.itens).forEach(([chave, qtd]) => {
-          if(dadosRanking[chave]) {
-            dadosRanking[chave].qtd += Number(qtd);
-            const preco = produtos.find(p => p.chave === chave)?.preco || 0;
-            dadosRanking[chave].valor += Number(qtd) * preco;
+          if(!dadosRanking[chave]) {
+            const prod = produtos.find(p => p.chave === chave);
+            dadosRanking[chave] = { nome: prod?.nome || chave, icone: prod?.icone || "•", qtd: 0, valor: 0 };
+          }
+          const qtdNum = Number(qtd);
+          if (qtdNum > 0) {
+            dadosRanking[chave].qtd += qtdNum;
+            // Preço cobrado no pedido (snapshot) — verdade do pedido, não o preço de hoje
+            const precoSnap = ped.precosSnapshot?.[chave];
+            const preco = precoSnap != null ? Number(precoSnap) : precoDe(chave);
+            dadosRanking[chave].valor += qtdNum * (isNaN(preco) ? 0 : preco);
           }
         });
       });

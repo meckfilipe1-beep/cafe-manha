@@ -235,8 +235,17 @@ export default function ClientePainel() {
   let qtdComidas = 0
   const qtdCafes = itens.cafe
 
+  // Fallback só quando o banco não tem o produto — nunca faz o item virar R$ 0
+  // precoItensSnap é sempre { [chave]: { preco: number } } — sem misturar number com objeto
+  const precoItensSnap: { [key: string]: { preco: number } } = Object.fromEntries(
+    Object.entries(PRECOS_PRODUTOS).map(([k, v]) => [k, { preco: v }])
+  )
+  Object.entries(produtosBanco || {}).forEach(([k, v]) => {
+    if (v && typeof v.preco === "number") precoItensSnap[k] = { preco: v.preco }
+  })
+
   Object.entries(itens).forEach(([chave, qtd]) => {
-    const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+    const preco = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
     subtotal += preco * qtd
     if (chave !== "cafe") qtdComidas += qtd
   })
@@ -247,16 +256,19 @@ export default function ClientePainel() {
     let cafesUsados = 0
     for (const [chave, qtd] of Object.entries(itens)) {
       if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
-        const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
-        const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
+        const precoItem = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
+        const precoCafe = precoItensSnap.cafe?.preco ?? PRECOS_PRODUTOS.cafe ?? 4
         const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
-        descuentoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
+        const descontoUm = (precoItem + precoCafe) - 10
+        // Combo nunca pode aumentar o preço — se o item for barato, ignora o combo
+        if (descontoUm > 0) descuentoCombo += qtdUsar * descontoUm
         cafesUsados += qtdUsar
       }
     }
   }
 
-  const valorTotalFinal = Math.max(0, subtotal - descuentoCombo)
+  // Arredonda para não somar 23.299999999
+  const valorTotalFinal = Math.max(0, Math.round((subtotal - descuentoCombo) * 100) / 100)
   const trocoParaNum = parseFloat(trocoPara.replace(",", ".")) || 0
   const trocoCalculado = pagamento === "Dinheiro" && trocoParaNum > valorTotalFinal ? trocoParaNum - valorTotalFinal : 0
 
@@ -357,7 +369,19 @@ export default function ClientePainel() {
         setEnviandoPedido(false)
         return
       } else {
-        const vaiPagar = vaiPagarAgora === true
+      // Snapshot dos preços cobrados — admin mostra o valor real do pedido, não o preço de hoje
+      const precosSnapshot: { [key: string]: number } = {}
+      const precoItensSnap: { [key: string]: { preco: number } } = Object.fromEntries(
+        Object.entries(PRECOS_PRODUTOS).map(([k, v]) => [k, { preco: v }])
+      )
+      Object.entries(produtosBanco || {}).forEach(([k, v]) => {
+        if (v && typeof v.preco === "number") precoItensSnap[k] = { preco: v.preco }
+      })
+      Object.entries(itens).forEach(([chave, qtd]) => {
+        if (qtd > 0) precosSnapshot[chave] = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
+      })
+
+      const vaiPagar = vaiPagarAgora === true
         const payloadPedido = {
           nome: nome.trim(),
           telefone: telefone.trim(),
@@ -374,7 +398,8 @@ export default function ClientePainel() {
           mensagemPagamento: vaiPagar ? "Cliente informou que já pagou" : "Cliente ainda não pagou",
           concluido: false,
           dataCriacao: new Date().toISOString(),
-          itens
+          itens,
+          precosSnapshot,
         }
 
         const docRef = await addDoc(collection(db, "pedidos"), payloadPedido)
@@ -431,8 +456,16 @@ export default function ClientePainel() {
       let qtdComidas = 0
       const qtdCafes = itensOnly.cafe || 0
 
+  // Fallback — nunca faz o item virar R$ 0
+  const precoItensSnap: { [key: string]: { preco: number } } = Object.fromEntries(
+    Object.entries(PRECOS_PRODUTOS).map(([k, v]) => [k, { preco: v }])
+  )
+  Object.entries(produtosBanco || {}).forEach(([k, v]) => {
+    if (v && typeof v.preco === "number") precoItensSnap[k] = { preco: v.preco }
+  })
+
       Object.entries(itensOnly).forEach(([chave, qtd]) => {
-        const preco = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
+        const preco = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
         novoSubtotal += preco * qtd
         if (chave !== "cafe") qtdComidas += qtd
       })
@@ -443,16 +476,17 @@ export default function ClientePainel() {
         let cafesUsados = 0
         for (const [chave, qtd] of Object.entries(itensOnly)) {
           if (chave !== "cafe" && qtd > 0 && cafesUsados < totalCombos) {
-            const precoItem = produtosBanco[chave]?.preco ?? PRECOS_PRODUTOS[chave]
-            const precoCafe = produtosBanco.cafe?.preco ?? PRECOS_PRODUTOS.cafe
+            const precoItem = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
+            const precoCafe = precoItensSnap.cafe?.preco ?? PRECOS_PRODUTOS.cafe ?? 4
             const qtdUsar = Math.min(qtd, totalCombos - cafesUsados)
-            descontoCombo += qtdUsar * ((precoItem + precoCafe) - 10)
+            const descontoUm = (precoItem + precoCafe) - 10
+            if (descontoUm > 0) descontoCombo += qtdUsar * descontoUm
             cafesUsados += qtdUsar
           }
         }
       }
 
-      const novoTotal = Math.max(0, novoSubtotal - descontoCombo)
+      const novoTotal = Math.max(0, Math.round((novoSubtotal - descontoCombo) * 100) / 100)
 
       const observacoesItemCombinadas = {
         ...(pedido.data.observacoesItem || {}),
@@ -463,9 +497,18 @@ export default function ClientePainel() {
 
       const horarioFinal = usarNovoHorario ? horario : (pedido.data.horario || horario)
 
+      // Atualiza o snapshot com os preços atuais para os itens combinados
+      const precosSnapshotCompletos: { [key: string]: number } = { ...(pedido.data.precosSnapshot || {}) }
+      Object.entries(itensOnly).forEach(([chave]) => {
+        if (precosSnapshotCompletos[chave] == null) {
+          precosSnapshotCompletos[chave] = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
+        }
+      })
+
       await updateDoc(doc(db, "pedidos", pedido.id), {
         itens: itensOnly,
         valorTotal: novoTotal,
+        precosSnapshot: precosSnapshotCompletos,
         observacao: observacao.trim() || pedido.data.observacao || "",
         observacoesItem: observacoesItemCombinadas,
         horario: horarioFinal,
@@ -507,6 +550,17 @@ export default function ClientePainel() {
     try {
       const enderecoCompleto = salvamentoPendente.enderecoCompleto
       const vaiPagar = vaiPagarAgora === true
+      // Snapshot dos preços cobrados
+      const precosSnapshot: { [key: string]: number } = {}
+      const precoItensSnap: { [key: string]: { preco: number } } = Object.fromEntries(
+        Object.entries(PRECOS_PRODUTOS).map(([k, v]) => [k, { preco: v }])
+      )
+      Object.entries(produtosBanco || {}).forEach(([k, v]) => {
+        if (v && typeof v.preco === "number") precoItensSnap[k] = { preco: v.preco }
+      })
+      Object.entries(itens).forEach(([chave, qtd]) => {
+        if (qtd > 0) precosSnapshot[chave] = precoItensSnap[chave]?.preco ?? PRECOS_PRODUTOS[chave] ?? 0
+      })
       const payloadPedido = {
         nome: nome.trim(),
         telefone: telefone.trim(),
@@ -523,7 +577,8 @@ export default function ClientePainel() {
         mensagemPagamento: vaiPagar ? "Cliente informou que já pagou" : "Cliente ainda não pagou",
         concluido: false,
         dataCriacao: new Date().toISOString(),
-        itens
+        itens,
+        precosSnapshot,
       }
 
       const docRef = await addDoc(collection(db, "pedidos"), payloadPedido)
