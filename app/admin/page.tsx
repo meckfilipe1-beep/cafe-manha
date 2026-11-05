@@ -305,7 +305,16 @@ export default function AdminPainel() {
           } else {
             const pedidosValidos = (dados.pedidos || []).filter((p: any) => idsPedidosExistentes.has(p.pedidoId));
             if (pedidosValidos.length !== (dados.pedidos || []).length) {
-              await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos });
+              // ✅ Recalcula o total junto com a remoção dos órfãos,
+              // senão o valor velho continua e "volta" na tela.
+              const soma = pedidosValidos.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0);
+              const pago = (dados.pagamentos || []).reduce((s: number, pg: any) => s + (Number(pg.valor) || 0), 0);
+              const novoTotal = Math.max(0, Math.round((soma - pago) * 100) / 100);
+              if (novoTotal <= 0) {
+                await deleteDoc(doc(db, "fiados", d.id));
+              } else {
+                await updateDoc(doc(db, "fiados", d.id), { pedidos: pedidosValidos, totalDevido: novoTotal });
+              }
             }
           }
         }
@@ -463,6 +472,102 @@ export default function AdminPainel() {
   };
   const chaveGrupoFiado = (nome: string, telefone: string) =>
     `${(nome || "").trim().toUpperCase()}|${(telefone || "").replace(/\D/g, "")}`;
+
+  // REGRA ÚNICA do fiado — todos os caminhos de criação passam por aqui.
+  // Garante: sem duplicar pedido, sem duplicar documento da mesma pessoa,
+  // e totalDevido sempre recalculado (nunca acumula valor velho duplicado).
+  async function registrarOuAtualizarFiado(args: {
+    pedidoId: string;
+    nome: string;
+    telefone: string;
+    endereco: string;
+    valorTotal: number;
+    itens: any;
+    precosSnapshot: any;
+    horario: string;
+    data?: any;
+  }): Promise<"criado" | "atualizado" | "ja_existe" | "ja_existe_legado"> {
+    const { pedidoId, nome, telefone, endereco, valorTotal, itens, precosSnapshot, horario, data } = args;
+    const valor = Number(valorTotal) || 0;
+
+    // 1) Descobre TODOS os documentos da mesma pessoa (fixa o bug de
+    //    duplicados: o mesmo cliente podia ter 2+ docs fiados).
+    const snapTodos = await getDocs(collection(db, "fiados"));
+    const chaveAlvo = chaveGrupoFiado(nome || "", telefone || "");
+    const docsDaPessoa = snapTodos.docs.filter(
+      (d) => chaveGrupoFiado((d.data() as any).nome || "", (d.data() as any).telefone || "") === chaveAlvo
+    );
+
+    // 2) Se qualquer doc já contém este pedido → não duplica o valor.
+    for (const d of docsDaPessoa) {
+      const dados = d.data() as any;
+      if ((dados.pedidos || []).some((p: any) => p.pedidoId === pedidoId)) {
+        return "ja_existe";
+      }
+    }
+
+    // 3) Legado: pedido já está num doc com chave antiga (formato diferente).
+    //    Procura em TODOS os fiados para não duplicar valor velho.
+    for (const d of snapTodos.docs) {
+      if (docsDaPessoa.some((x) => x.id === d.id)) continue;
+      const dados = d.data() as any;
+      if ((dados.pedidos || []).some((p: any) => p.pedidoId === pedidoId)) {
+        return "ja_existe_legado";
+      }
+    }
+
+    const pedidoItem = {
+      pedidoId,
+      data: data || new Date().toISOString(),
+      horario: horario || "",
+      valor,
+      itens: itens || {},
+      precosSnapshot: precosSnapshot || {},
+    };
+
+    // 4) Se a pessoa já tem doc(s), adiciona ao doc principal e
+    //    consolida os demais (remove duplicados migrando os pedidos).
+    if (docsDaPessoa.length > 0) {
+      const principal = docsDaPessoa[0];
+      const dadosPrinc = principal.data() as any;
+      const pedidosConsolidados: any[] = [...(dadosPrinc.pedidos || [])];
+      const pagamentosConsolidados: any[] = [...(dadosPrinc.pagamentos || [])];
+
+      for (let i = 1; i < docsDaPessoa.length; i++) {
+        const outro = docsDaPessoa[i].data() as any;
+        pedidosConsolidados.push(...(outro.pedidos || []));
+        pagamentosConsolidados.push(...(outro.pagamentos || []));
+        await deleteDoc(doc(db, "fiados", docsDaPessoa[i].id));
+      }
+
+      pedidosConsolidados.push(pedidoItem);
+      const soma = pedidosConsolidados.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0);
+      const pago = pagamentosConsolidados.reduce((s: number, pg: any) => s + (Number(pg.valor) || 0), 0);
+      const novoTotal = Math.max(0, Math.round((soma - pago) * 100) / 100);
+
+      await updateDoc(doc(db, "fiados", principal.id), {
+        pedidos: pedidosConsolidados,
+        pagamentos: pagamentosConsolidados,
+        totalDevido: novoTotal,
+        ultimaAtualizacao: new Date().toISOString(),
+      });
+      return "atualizado";
+    }
+
+    // 5) Sem doc existente → cria o doc canônico (chaveFiado).
+    const chave = chaveFiado(nome || "", telefone || "");
+    const ref = doc(db, "fiados", chave);
+    await setDoc(ref, {
+      nome: nome || "",
+      telefone: telefone || "",
+      endereco: endereco || "",
+      totalDevido: valor,
+      pedidos: [pedidoItem],
+      pagamentos: [],
+      ultimaAtualizacao: new Date().toISOString(),
+    });
+    return "criado";
+  }
 
   const dispararFluxoConclusaoAvulso = (e: React.FormEvent) => {
     e.preventDefault();
@@ -694,42 +799,18 @@ export default function AdminPainel() {
       }
 
       if (status === "fiado" && pedidoIdParaFiado) {
-        // Valor do fiado = TOTAL do pedido agrupado (não só os itens novos)
-        const pedidoDoc = await getDoc(doc(db, "pedidos", pedidoIdParaFiado));
-        const pedidoData: any = pedidoDoc.exists() ? pedidoDoc.data() : {};
-        const valorFiado = Number(pedidoData.valorTotal) || valorTotalAvulsoNumerico;
-        const itensFiado = pedidoData.itens || itensNovos;
-        const precosFiado = pedidoData.precosSnapshot || {};
-
-        const keyFiado = `${(whatsappAvulso || pedidoData.telefone || "sem_telefone").replace(/\D/g, "")}_${nomeAvulso.trim().toUpperCase()}`;
-        const refFiado = doc(db, "fiados", keyFiado);
-        const snapFiado = await getDoc(refFiado);
-        const pedidoItem = {
+        // ✅ REGRA ÚNICA — delega sempre pra função central, sem duplicar
+        await registrarOuAtualizarFiado({
           pedidoId: pedidoIdParaFiado,
-          data: new Date().toISOString(),
+          nome: nomeAvulso,
+          telefone: whatsappAvulso || "",
+          endereco: enderecoCompletoConstruido,
+          valorTotal: Number((await getDoc(doc(db, "pedidos", pedidoIdParaFiado))).data()?.valorTotal) || valorTotalAvulsoNumerico,
+          itens: itensNovos,
+          precosSnapshot: (await getDoc(doc(db, "pedidos", pedidoIdParaFiado))).data()?.precosSnapshot || {},
           horario: horarioAvulso,
-          valor: valorFiado,
-          itens: itensFiado,
-          precosSnapshot: precosFiado,
-        };
-        if (snapFiado.exists()) {
-          const dataFiado = snapFiado.data();
-          await updateDoc(refFiado, {
-            pedidos: [...(dataFiado.pedidos || []), pedidoItem],
-            totalDevido: (dataFiado.totalDevido || 0) + valorFiado,
-            ultimaAtualizacao: new Date().toISOString(),
-          });
-        } else {
-          await setDoc(refFiado, {
-            nome: nomeAvulso,
-            telefone: whatsappAvulso || pedidoData.telefone || "",
-            endereco: `${ruaAvulso || ""}${numeroAvulso ? `, Nº ${numeroAvulso}` : ""}${referenciaAvulso ? ` - ${referenciaAvulso}` : ""}`.trim() || "Retirada no Balcão",
-            totalDevido: valorFiado,
-            pedidos: [pedidoItem],
-            pagamentos: [],
-            ultimaAtualizacao: new Date().toISOString(),
-          });
-        }
+          data: new Date().toISOString(),
+        });
       }
 
       setNomeAvulso("");
@@ -801,35 +882,21 @@ export default function AdminPainel() {
       const mensagem = statusFinal === "fiado" ? "📒 PEDIDO CONCLUÍDO NO FIADO!" : foiPago ? "🟢 PEDIDO CONCLUÍDO E PAGO!" : "🔴 MOVIDO PARA AS PENDÊNCIAS!";
 
       if (statusFinal === "fiado") {
-        const chave = `${(pedido.telefone || "sem_telefone").replace(/\D/g, "")}_${(pedido.nome || "").trim().toUpperCase()}`;
-        const ref = doc(db, "fiados", chave);
-        const snap = await getDoc(ref);
-        const pedidoItem = {
+        // ✅ REGRA ÚNICA — delega sempre pra função central, sem duplicar
+        await registrarOuAtualizarFiado({
           pedidoId: pedido.id,
-          data: pedido.dataCriacao || new Date().toISOString(),
-          horario: pedido.horario || "",
-          valor: pedido.valorTotal || 0,
+          nome: pedido.nome || "",
+          telefone: pedido.telefone || "",
+          endereco: pedido.endereco || "",
+          valorTotal: Number(pedido.valorTotal) || 0,
           itens: pedido.itens || {},
           precosSnapshot: pedido.precosSnapshot || {},
-        };
-        if (snap.exists()) {
-          const dados = snap.data();
-          await updateDoc(ref, {
-            pedidos: [...(dados.pedidos || []), pedidoItem],
-            totalDevido: (dados.totalDevido || 0) + (pedido.valorTotal || 0),
-            ultimaAtualizacao: new Date().toISOString(),
-          });
-        } else {
-          await setDoc(ref, {
-            nome: pedido.nome,
-            telefone: pedido.telefone || "",
-            endereco: pedido.endereco || "",
-            totalDevido: pedido.valorTotal || 0,
-            pedidos: [pedidoItem],
-            pagamentos: [],
-            ultimaAtualizacao: new Date().toISOString(),
-          });
-        }
+          horario: pedido.horario || "",
+          data: pedido.dataCriacao,
+        });
+      } else if (statusFinal === "pago") {
+        // Pedido virou pago — remove qualquer referência do fiado
+        await removerPedidoDosFiados({ id: pedido.id });
       }
 
       await updateDoc(doc(db, "pedidos", pedido.id), { concluido: true, statusPagamento: statusFinal, ...(statusFinal === "pago" && { mensagemPagamento: null }) });
@@ -903,49 +970,20 @@ export default function AdminPainel() {
   async function moverParaFiado(pedido: any) {
     if (!usuarioLogado) return;
     try {
-      const chave = chaveFiado(pedido.nome || "", pedido.telefone || "");
-      const ref = doc(db, "fiados", chave);
-      const snap = await getDoc(ref);
-
-      const pedidoItem = {
+      // ✅ REGRA ÚNICA — delega sempre pra função central, sem duplicar
+      const resultado = await registrarOuAtualizarFiado({
         pedidoId: pedido.id,
-        data: pedido.dataCriacao || new Date().toISOString(),
-        horario: pedido.horario || "",
-        valor: pedido.valorTotal || 0,
+        nome: pedido.nome || "",
+        telefone: pedido.telefone || "",
+        endereco: pedido.endereco || "",
+        valorTotal: Number(pedido.valorTotal) || 0,
         itens: pedido.itens || {},
         precosSnapshot: pedido.precosSnapshot || {},
-      };
-
-      if (snap.exists()) {
-        const dados = snap.data();
-        const jaExiste = (dados.pedidos || []).some((p: any) => p.pedidoId === pedido.id);
-        if (jaExiste) {
-          // Pedido já está no fiado — só garante o status e não duplica o valor
-          await updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado" });
-          setNotificacaoCaixa("📒 JÁ ESTÁ NO FIADO!");
-          setTimeout(() => setNotificacaoCaixa(null), 2000);
-          if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
-          return;
-        }
-        await updateDoc(ref, {
-          pedidos: [...(dados.pedidos || []), pedidoItem],
-          totalDevido: (dados.totalDevido || 0) + (pedido.valorTotal || 0),
-          ultimaAtualizacao: new Date().toISOString(),
-        });
-      } else {
-        await setDoc(ref, {
-          nome: pedido.nome,
-          telefone: pedido.telefone || "",
-          endereco: pedido.endereco || "",
-          totalDevido: pedido.valorTotal || 0,
-          pedidos: [pedidoItem],
-          pagamentos: [],
-          ultimaAtualizacao: new Date().toISOString(),
-        });
-      }
-
+        horario: pedido.horario || "",
+        data: pedido.dataCriacao,
+      });
       await updateDoc(doc(db, "pedidos", pedido.id), { statusPagamento: "fiado" });
-      setNotificacaoCaixa("📒 MOVIDO PARA FIADO!");
+      setNotificacaoCaixa(resultado === "ja_existe" || resultado === "ja_existe_legado" ? "📒 JÁ ESTÁ NO FIADO!" : "📒 MOVIDO PARA FIADO!");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
       if (pedidoDetalhado?.id === pedido.id) setPedidoDetalhado(null);
     } catch (erro) {
@@ -978,6 +1016,8 @@ export default function AdminPainel() {
           });
         }
       }
+      // ✅ Anti-cache: reflete na hora no estado local (antes do onSnapshot voltar).
+      removerFinalizadosDoEstadoLocal([pedido.id]);
     } catch (e) { console.error("Erro ao remover pedido dos fiados:", e); }
   }
 
@@ -987,13 +1027,23 @@ export default function AdminPainel() {
       const pessoa = fiadosAgrupados.find((p: any) => p.id === fiadoParaExcluir.id) || null;
       const idsRaw: string[] = (pessoa && (pessoa as any)._ids) || fiadoParaExcluir.ids || [fiadoParaExcluir.id];
       const idsUnicos = [...new Set(idsRaw)];
+      // ✅ Anti-cache: confirma no Firestore os docs REAIS da pessoa antes de
+      // apagar (onSnapshot pode estar com estado antigo e ressuscitar o fiado).
+      const snapTodos = await getDocs(collection(db, "fiados"));
+      const alvo = pessoa ? (pessoa as any)._chave || chaveGrupoFiado(pessoa.nome || "", pessoa.telefone || "") : "";
+      const idsReais = snapTodos.docs
+        .filter((d) => alvo && chaveGrupoFiado((d.data() as any).nome || "", (d.data() as any).telefone || "") === alvo)
+        .map((d) => d.id);
+      const todosIds = [...new Set([...idsUnicos, ...idsReais])];
       let removidos = 0;
-      for (const id of idsUnicos) {
+      for (const id of todosIds) {
         try {
           await deleteDoc(doc(db, "fiados", id));
           removidos++;
         } catch {}
       }
+      // ✅ Limpeza OTIMISTA do estado local: nunca deixa valor velho na tela.
+      setFiados((prev) => prev.filter((f) => !todosIds.includes(f.id)));
       setNotificacaoCaixa(`🗑️ Conta fiada de ${fiadoParaExcluir.nome} excluída (${removidos} documento(s))`);
       setTimeout(() => setNotificacaoCaixa(null), 3000);
     } catch (erro) {
@@ -1014,6 +1064,7 @@ export default function AdminPainel() {
       let nomeCliente = nomeAgrupado || "";
       let telefoneCliente = "";
       let totalRestanteFinal = 0;
+      const pedidosQuitados: string[] = [];
 
       for (const id of ids) {
         if (restante <= 0) break;
@@ -1037,6 +1088,7 @@ export default function AdminPainel() {
         if (restoG <= 0 && dad.pedidos) {
           for (const p of dad.pedidos) {
             try { await updateDoc(doc(db, "pedidos", p.pedidoId), { statusPagamento: "pago" }); } catch {}
+            pedidosQuitados.push(p.pedidoId);
           }
           await deleteDoc(refG);
           totalRestanteFinal = 0;
@@ -1061,6 +1113,8 @@ export default function AdminPainel() {
 
       setModalPagamentoFiado(null);
       setValorPagamentoFiado("");
+      // ✅ Anti-cache: reflete o pagamento na hora no estado local.
+      if (pedidosQuitados.length > 0) removerFinalizadosDoEstadoLocal(pedidosQuitados);
       setNotificacaoCaixa(`💰 Recebido R$ ${valorPago.toFixed(2)}${nomeCliente ? ` de ${nomeCliente}` : ""}`);
       setTimeout(() => setNotificacaoCaixa(null), 2000);
 
@@ -1080,6 +1134,23 @@ export default function AdminPainel() {
       setNotificacaoCaixa("❌ Erro ao registrar pagamento");
       setTimeout(() => setNotificacaoCaixa(null), 2000);
     }
+  }
+
+  // ✅ Limpeza OTIMISTA do estado local (anti-cache onSnapshot):
+  // nunca deixa valor velho na tela se o snapshot atrasar.
+  function removerFinalizadosDoEstadoLocal(idsPedidos: string[]) {
+    setFiados((prev) =>
+      prev
+        .map((f: any) => {
+          const pedidosNovos = (f.pedidos || []).filter((p: any) => !idsPedidos.includes(p.pedidoId));
+          if (pedidosNovos.length === (f.pedidos || []).length) return f;
+          const soma = pedidosNovos.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0);
+          const pago = (f.pagamentos || []).reduce((s: number, pg: any) => s + (Number(pg.valor) || 0), 0);
+          const novoTotal = Math.max(0, Math.round((soma - pago) * 100) / 100);
+          return { ...f, pedidos: pedidosNovos, totalDevido: novoTotal };
+        })
+        .filter((f: any) => Number(f.totalDevido) > 0)
+    );
   }
 
   async function alternarStatusFuncionamento() {
