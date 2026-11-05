@@ -1804,7 +1804,7 @@ export default function AdminPainel() {
                   )}
 
                   {pedido.mensagemPagamento && (
-                    <div className={`mb-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${pedido.mensagemPagamento === "Cliente informou que já pagou" ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-amber-50 text-amber-700 border-amber-300"}`}>
+                    <div className={`mb-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${pedido.mensagemPagamento === "O cliente informou que não pagou" ? "bg-amber-50 text-amber-700 border-amber-300" : "bg-emerald-50 text-emerald-700 border-emerald-300"}`}>
                       {pedido.mensagemPagamento}
                     </div>
                   )}
